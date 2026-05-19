@@ -1,0 +1,130 @@
+<%- include('../partials/head', { pageTitle: '대시보드' }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-7xl mx-auto px-6 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">위원회 대시보드</h1>
+      <p class="text-sm text-slate-500 mt-1">운영중인 위원회와 회의 일정을 한눈에 관리하세요.</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="/admin/insights" class="border bg-white hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-semibold">📊 효과 분석</a>
+      <a href="/admin/committees/new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ 새 위원회</a>
+    </div>
+  </div>
+
+  <section class="bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 rounded-2xl p-6 mb-6 text-white">
+    <div class="flex items-center gap-2 text-indigo-100 text-xs mb-2">
+      <span>⚡</span><span>본 시스템 도입으로 절약된 행정 시간</span>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+      <div>
+        <div class="text-4xl md:text-5xl font-bold leading-none">
+          <%= stats.savedHours.toFixed(0) %><span class="text-2xl text-indigo-200 ml-1">시간</span>
+        </div>
+        <div class="text-sm text-indigo-200 mt-2">
+          ≈ 근무일 <strong class="text-white"><%= stats.savedDays.toFixed(1) %>일</strong> ·
+          외부위원 재방문 <strong class="text-white"><%= stats.externalVisitHoursSaved %>시간</strong> 절감
+        </div>
+      </div>
+      <div>
+        <div class="text-xs text-indigo-200 mb-2">기존 vs 본 시스템 (회의 1건당)</div>
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-2 text-xs">
+            <span class="w-12 text-indigo-200">기존</span>
+            <div class="flex-1 h-3 bg-white/20 rounded-full overflow-hidden">
+              <div class="h-full bg-rose-300" style="width: 100%"></div>
+            </div>
+            <span class="w-16 text-right"><%= stats.manualHours %>h</span>
+          </div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="w-12 text-indigo-200">현재</span>
+            <div class="flex-1 h-3 bg-white/20 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-300" style="width: <%= (stats.systemHours / stats.manualHours * 100).toFixed(1) %>%"></div>
+            </div>
+            <span class="w-16 text-right"><%= stats.systemHours %>h</span>
+          </div>
+        </div>
+      </div>
+      <div class="text-center md:text-right">
+        <div class="text-5xl md:text-6xl font-bold leading-none"><%= stats.reductionPct %><span class="text-2xl text-indigo-200">%</span></div>
+        <div class="text-sm text-indigo-200 mt-2">처리 시간 단축</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">위원회</div>
+      <div class="text-2xl font-bold text-slate-900 mt-1"><%= stats.committees %></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">전체 위원</div>
+      <div class="text-2xl font-bold text-slate-900 mt-1"><%= stats.members %></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">진행중 회의</div>
+      <div class="text-2xl font-bold text-amber-600 mt-1"><%= stats.meetings.scheduling || 0 %></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">완료 회의</div>
+      <div class="text-2xl font-bold text-emerald-600 mt-1"><%= stats.meetings.completed || 0 %></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">발송 알림</div>
+      <div class="text-2xl font-bold text-violet-600 mt-1"><%= stats.notificationCount %></div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2">
+      <h2 class="text-lg font-bold text-slate-900 mb-3">내 위원회</h2>
+      <div class="space-y-3">
+        <% if (committees.length === 0) { %>
+          <div class="bg-white border rounded-xl p-8 text-center text-slate-500">
+            아직 위원회가 없습니다. <a href="/admin/committees/new" class="text-indigo-600 font-semibold">+ 새 위원회 만들기</a>
+          </div>
+        <% } %>
+        <% committees.forEach(c => { %>
+          <a href="/admin/committees/<%= c.id %>" class="block bg-white border hover:border-indigo-400 hover:shadow-md transition rounded-xl p-5">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="font-semibold text-slate-900"><%= c.name %></div>
+                <% if (c.description) { %><div class="text-sm text-slate-500 mt-0.5 line-clamp-1"><%= c.description %></div><% } %>
+              </div>
+              <% if (c.active_count > 0) { %>
+                <span class="badge badge-amber">조율 중 <%= c.active_count %></span>
+              <% } %>
+            </div>
+            <div class="flex gap-4 mt-3 text-xs text-slate-500">
+              <span>위원 <strong class="text-slate-700"><%= c.member_count %></strong>명</span>
+              <span>회의 <strong class="text-slate-700"><%= c.meeting_count %></strong>건</span>
+              <% if (c.quorum > 0) { %><span>성원 기준 <strong class="text-slate-700"><%= c.quorum %></strong>명</span><% } %>
+            </div>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+    <div>
+      <h2 class="text-lg font-bold text-slate-900 mb-3">최근 회의</h2>
+      <div class="space-y-2">
+        <% if (recentMeetings.length === 0) { %>
+          <div class="bg-white border rounded-xl p-6 text-center text-slate-500 text-sm">아직 등록된 회의가 없습니다.</div>
+        <% } %>
+        <% recentMeetings.forEach(m => { %>
+          <a href="/admin/meetings/<%= m.id %>" class="block bg-white border hover:border-indigo-400 rounded-lg px-4 py-3">
+            <div class="flex items-center justify-between">
+              <div class="font-medium text-sm text-slate-900 line-clamp-1"><%= m.title %></div>
+              <% if (m.status === 'scheduling') { %><span class="badge badge-amber">조율중</span>
+              <% } else if (m.status === 'confirmed') { %><span class="badge badge-blue">확정</span>
+              <% } else if (m.status === 'completed') { %><span class="badge badge-green">완료</span>
+              <% } %>
+            </div>
+            <div class="text-xs text-slate-500 mt-1"><%= m.committee_name %></div>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+</main>
+</body></html>

@@ -1,0 +1,35 @@
+{
+  "name": "committee-platform",
+  "version": "0.1.0",
+  "description": "위원회 운영 통합 자동화 플랫폼",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "committee",
+    "scheduling",
+    "signature",
+    "university"
+  ],
+  "author": "Linda",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.16.0",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^12.9.0",
+    "body-parser": "^2.2.2",
+    "cheerio": "^1.2.0",
+    "cookie-parser": "^1.4.7",
+    "ejs": "^5.0.2",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "iconv-lite": "^0.7.2",
+    "multer": "^2.1.1",
+    "pdfkit": "^0.18.0",
+    "uuid": "^14.0.0"
+  }
+}

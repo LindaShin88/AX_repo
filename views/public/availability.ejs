@@ -1,0 +1,68 @@
+<%- include('../partials/head', { pageTitle: '가능 일정 회신' }) %>
+
+<% function fmtKor(dt) {
+  const d = new Date(dt);
+  const day = ['일','월','화','수','목','금','토'][d.getDay()];
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getMonth()+1}월 ${d.getDate()}일 (${day}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+} %>
+
+<main class="max-w-2xl mx-auto px-4 py-8">
+  <div class="bg-white rounded-2xl shadow-sm border p-6 mb-4">
+    <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
+      <span class="badge badge-violet">로그인 불필요</span>
+      <span>1분 안에 응답 완료</span>
+    </div>
+    <h1 class="text-xl font-bold text-slate-900"><%= token.committee_name %></h1>
+    <h2 class="text-2xl font-bold text-slate-900 mt-1"><%= token.title %></h2>
+    <% if (token.description) { %><p class="text-sm text-slate-600 mt-2"><%= token.description %></p><% } %>
+    <div class="mt-3 text-sm text-slate-700">
+      <strong><%= token.member_name %></strong><% if (token.role) { %> · <%= token.role %><% } %><% if (token.affiliation) { %> · <%= token.affiliation %><% } %> 님께
+    </div>
+  </div>
+
+  <form method="POST" action="/avail/<%= token.token %>" class="bg-white rounded-2xl shadow-sm border p-6">
+    <h3 class="font-bold text-slate-900 mb-1">아래 후보 일정 중 가능 여부를 표시해주세요</h3>
+    <p class="text-xs text-slate-500 mb-4">
+      <% if (token.member_type === 'internal' && token.sabun) { %>
+      ※ 한성대 시간표 기준으로 강의 시간과 겹치는 항목은 자동으로 '불가능'으로 표시되어 있습니다. 필요시 수정 가능합니다.
+      <% } else { %>
+      ※ 가능한 시간을 모두 선택해주세요.
+      <% } %>
+    </p>
+
+    <div class="space-y-3">
+      <% slots.forEach(slot => { %>
+        <% const existing = responses.find(r => r.slot_id === slot.id); %>
+        <% const isAuto = existing && existing.auto_filled; %>
+        <div class="border rounded-xl p-4 <%= isAuto ? 'bg-rose-50 border-rose-200' : '' %>">
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-semibold text-slate-900"><%= fmtKor(slot.start_time) %></div>
+            <div class="text-xs text-slate-500">~ <%= new Date(slot.end_time).getHours() %>:<%= String(new Date(slot.end_time).getMinutes()).padStart(2,'0') %></div>
+          </div>
+          <% if (isAuto) { %>
+            <div class="text-xs text-rose-700 mb-2">⚠️ 시간표 자동 인식: <%= existing.note %></div>
+          <% } %>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <label class="flex items-center justify-center gap-2 border rounded-lg px-4 py-2.5 cursor-pointer has-[:checked]:bg-emerald-100 has-[:checked]:border-emerald-400 has-[:checked]:font-semibold">
+              <input type="radio" name="slot_<%= slot.id %>" value="available" <%= existing && existing.response === 'available' ? 'checked' : '' %>>
+              <span>가능 ✓</span>
+            </label>
+            <label class="flex items-center justify-center gap-2 border rounded-lg px-4 py-2.5 cursor-pointer has-[:checked]:bg-rose-100 has-[:checked]:border-rose-400 has-[:checked]:font-semibold">
+              <input type="radio" name="slot_<%= slot.id %>" value="unavailable" <%= existing && existing.response === 'unavailable' ? 'checked' : '' %>>
+              <span>불가능 ✗</span>
+            </label>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+
+    <div class="mt-6 flex gap-2">
+      <button class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl">응답 제출</button>
+    </div>
+    <p class="text-xs text-slate-400 mt-3 text-center">
+      해당 링크는 <%= token.member_name %>님께만 발송된 1회용 응답 링크입니다. (위원회 운영자만 본 링크를 알고 있습니다)
+    </p>
+  </form>
+</main>
+</body></html>

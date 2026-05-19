@@ -1,0 +1,35 @@
+<nav class="bg-white border-b shadow-sm">
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a href="<%= operator?.role === 'super_admin' ? '/admin/users' : '/admin' %>" class="flex items-center gap-2 text-slate-900 font-bold">
+        <span class="inline-block w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white text-center leading-8 text-sm">위</span>
+        <span>위원회 자동화 플랫폼</span>
+      </a>
+      <div class="hidden md:flex gap-1 text-sm">
+        <% if (operator?.role === 'super_admin') { %>
+          <a href="/admin/users" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/users') ? 'bg-slate-100 font-semibold' : '' %>">운영자 관리</a>
+          <a href="/admin/notifications" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/notifications') ? 'bg-slate-100 font-semibold' : '' %>">알림 로그</a>
+        <% } else { %>
+          <a href="/admin" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath === '/' ? 'bg-slate-100 font-semibold' : '' %>">대시보드</a>
+          <a href="/admin/insights" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/insights') ? 'bg-slate-100 font-semibold' : '' %>">📊 효과 분석</a>
+          <a href="/admin/hansung-cookie" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/hansung-cookie') ? 'bg-slate-100 font-semibold' : '' %>">🔑 한성대 쿠키</a>
+          <a href="/admin/notifications" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/notifications') ? 'bg-slate-100 font-semibold' : '' %>">알림 로그</a>
+        <% } %>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <% if (operator) { %>
+      <div class="text-right">
+        <div class="text-slate-700"><strong><%= operator.name %></strong>
+          <% if (operator.role === 'super_admin') { %><span class="badge badge-violet ml-1">관리자</span><% } %>
+        </div>
+        <div class="text-xs text-slate-500"><%= operator.department || operator.username %></div>
+      </div>
+      <a href="/admin/profile" class="text-xs text-slate-500 hover:text-slate-900 border rounded px-2 py-1">내 계정</a>
+      <form method="POST" action="/admin/logout">
+        <button class="text-xs text-slate-500 hover:text-slate-900 border rounded px-2 py-1">로그아웃</button>
+      </form>
+      <% } %>
+    </div>
+  </div>
+</nav>

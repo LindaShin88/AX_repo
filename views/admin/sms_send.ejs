@@ -1,0 +1,119 @@
+<%- include('../partials/head', { pageTitle: 'SMS 수동 발송' }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+  <a href="/admin/meetings/<%= meeting.id %>" class="text-sm text-slate-500 hover:text-slate-900">← <%= meeting.title %></a>
+  <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-2">📱 SMS 수동 발송 (회사 SMS 시스템 연동용)</h1>
+  <p class="text-sm text-slate-500 mb-6">
+    회사에서 사용중인 SMS 발송 시스템에 그대로 복사·붙여넣기 할 수 있도록 정리했습니다.
+    SMS API 연동 전까지 본 페이지에서 수동 발송하시면 됩니다.
+  </p>
+
+  <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-5 text-sm text-amber-900">
+    <strong>💡 사용법:</strong>
+    각 위원의 "전화번호 복사" + "메시지 복사" 버튼으로 회사 SMS 사이트에 한 명씩 발송하시거나,
+    하단의 <strong>"전체 일괄 복사 (CSV)"</strong> 로 다운로드해서 SMS 사이트에 일괄 업로드하세요.
+  </div>
+
+  <div class="flex gap-2 mb-6">
+    <button onclick="copyAllCsv()" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold">📋 전체 일괄 복사 (CSV)</button>
+    <button onclick="downloadCsv()" class="border bg-white hover:bg-slate-50 px-4 py-2 rounded-lg text-sm">💾 CSV 다운로드</button>
+    <select onchange="window.location='?purpose='+this.value" class="border bg-white rounded-lg px-3 py-2 text-sm">
+      <option value="availability" <%= purpose === 'availability' ? 'selected' : '' %>>가능일정 요청</option>
+      <option value="meeting_confirmed" <%= purpose === 'meeting_confirmed' ? 'selected' : '' %>>일정 확정 안내</option>
+      <option value="signature_request" <%= purpose === 'signature_request' ? 'selected' : '' %>>서명 요청</option>
+      <option value="reminder" <%= purpose === 'reminder' ? 'selected' : '' %>>리마인드</option>
+    </select>
+  </div>
+
+  <% if (messages.length === 0) { %>
+    <div class="bg-white border rounded-xl p-8 text-center text-slate-500">
+      해당 유형의 SMS 발송 이력이 없습니다.<br>
+      <span class="text-xs text-slate-400 mt-2 block">회의 생성/일정 확정/서명 요청시 자동으로 SMS 로그가 쌓입니다.</span>
+    </div>
+  <% } %>
+
+  <div class="space-y-3">
+    <% messages.forEach((msg, i) => { %>
+    <div class="bg-white border rounded-xl p-5">
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex-shrink-0 w-48">
+          <div class="text-xs text-slate-500">받는 사람</div>
+          <div class="font-semibold text-slate-900 mt-0.5"><%= msg.member_name %>
+            <% if (msg.member_type === 'external') { %><span class="badge badge-violet ml-1">외부</span><% } %>
+          </div>
+          <div class="mt-3">
+            <div class="text-xs text-slate-500">전화번호</div>
+            <div class="font-mono text-lg text-indigo-700 mt-0.5"><%= msg.phone %></div>
+            <button onclick="copyText(this, '<%= msg.phone %>')" class="mt-1 text-xs border bg-white rounded px-2 py-1 hover:bg-slate-50 w-full">📋 번호 복사</button>
+          </div>
+        </div>
+        <div class="flex-1">
+          <div class="text-xs text-slate-500 mb-1">메시지 내용</div>
+          <pre id="msg-<%= i %>" class="bg-slate-50 border rounded-lg p-3 text-sm whitespace-pre-wrap font-sans"><%= msg.content %></pre>
+          <button onclick="copyMsg(this, <%= i %>)" class="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded px-3 py-1.5">📋 메시지 복사</button>
+        </div>
+      </div>
+      <div class="mt-3 pt-3 border-t flex items-center justify-between text-xs text-slate-400">
+        <span>발송 기록: <%= msg.sent_at %></span>
+        <span>글자수: <strong><span id="cnt-<%= i %>"></span></strong> (LMS 권장: 90자 이하)</span>
+      </div>
+    </div>
+    <% }) %>
+  </div>
+
+  <% if (messages.length > 0) { %>
+  <p class="mt-6 text-xs text-slate-400 text-center">
+    ※ 향후 SMS API 연동시 본 페이지는 자동 발송 상태 페이지로 전환됩니다.<br>
+    (Aligo / NHN Toast / 회사 자체 API 등 어떤 SMS 게이트웨이도 연동 가능)
+  </p>
+  <% } %>
+</main>
+
+<script>
+const allMessages = <%- JSON.stringify(messages.map(m => ({ name: m.member_name, phone: m.phone, content: m.content }))) %>;
+
+document.querySelectorAll('[id^="msg-"]').forEach((el, i) => {
+  const cnt = document.getElementById('cnt-' + i);
+  if (cnt) cnt.textContent = el.textContent.length + '자';
+});
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const old = btn.textContent;
+    btn.textContent = '✓ 복사됨';
+    setTimeout(() => btn.textContent = old, 1500);
+  });
+}
+
+function copyMsg(btn, idx) {
+  const text = document.getElementById('msg-' + idx).textContent;
+  copyText(btn, text);
+}
+
+function buildCsv() {
+  const header = '이름,전화번호,메시지';
+  const rows = allMessages.map(m => {
+    const safe = (s) => '"' + String(s).replace(/"/g, '""') + '"';
+    return [safe(m.name), safe(m.phone), safe(m.content)].join(',');
+  });
+  return [header, ...rows].join('\r\n');
+}
+
+function copyAllCsv() {
+  const csv = buildCsv();
+  navigator.clipboard.writeText(csv).then(() => alert('CSV 형식으로 ' + allMessages.length + '건이 복사되었습니다.'));
+}
+
+function downloadCsv() {
+  const csv = '﻿' + buildCsv();
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sms_<%= meeting.id %>_<%= purpose %>.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body></html>

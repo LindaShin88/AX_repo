@@ -1,0 +1,203 @@
+<%- include('../partials/head', { pageTitle: '한성대 세션 쿠키 설정' }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+  <a href="/admin" class="text-sm text-slate-500 hover:text-slate-900">← 대시보드</a>
+  <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-1">🔑 한성대 세션 쿠키 설정</h1>
+  <p class="text-sm text-slate-500 mb-6">
+    이 쿠키 한 줄을 등록하면 위원회 전원의 시간표를 자동으로 일괄 동기화할 수 있습니다.
+    <strong>비밀번호는 시스템에 저장되지 않습니다.</strong>
+  </p>
+
+  <% if (hasCookie) { %>
+    <div class="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg p-4 mb-6">
+      <div class="flex items-center gap-2 font-semibold">✓ 쿠키 등록됨</div>
+      <div class="text-xs mt-1 text-emerald-800">
+        <% if (cookieMeta?.savedAt) { %>저장: <%= new Date(cookieMeta.savedAt).toLocaleString('ko-KR') %><% } %>
+        <% if (cookieMeta?.lastTest) { %> · 최근 검증: <%= new Date(cookieMeta.lastTest).toLocaleString('ko-KR') %> (<%= cookieMeta.lastTestOk ? '✓ 정상' : '✗ ' + (cookieMeta.lastTestReason || '실패') %>)<% } %>
+      </div>
+      <form method="POST" action="/admin/hansung-cookie/clear" class="mt-3"
+            onsubmit="return confirm('등록된 쿠키를 삭제하시겠습니까?')">
+        <button class="text-xs border bg-white hover:bg-rose-50 text-rose-600 rounded px-3 py-1.5">쿠키 삭제</button>
+      </form>
+    </div>
+  <% } else { %>
+    <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-4 mb-6">
+      ⚠️ 아직 쿠키가 등록되지 않았습니다. 아래 안내대로 쿠키를 등록해주세요.
+    </div>
+  <% } %>
+
+  <section class="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-6 mb-6">
+    <h2 class="font-bold text-emerald-900 mb-3 flex items-center gap-2">⚡ 가장 빠른 방법 (북마크릿)</h2>
+    <p class="text-sm text-emerald-900/80 mb-3">아래 보라색 버튼을 <strong>드래그해서 브라우저 즐겨찾기 막대(Ctrl+Shift+B로 표시)에 끌어다 놓으세요.</strong> 한성대 페이지에서 그 즐겨찾기를 한 번 클릭하면 쿠키가 자동으로 복사됩니다.</p>
+
+    <div class="bg-white border rounded-lg p-4 mb-3">
+      <a href='javascript:(()=>{const c=document.cookie;if(!c){alert("✗ 쿠키 없음. info.hansung.ac.kr 에 로그인되어 있는지 확인해주세요.");return;}navigator.clipboard.writeText(c).then(()=>alert("✓ 전체 쿠키 복사 완료! ("+c.length+"자)\n\n위원회 자동화 플랫폼 쿠키 페이지에 붙여넣으세요.\n\n포함된 쿠키:\n"+c.split(";").map(s=>s.trim().split("=")[0]).join(", ")));})();'
+         class="inline-block bg-violet-600 hover:bg-violet-700 text-white font-bold px-5 py-3 rounded-lg shadow no-underline cursor-grab"
+         draggable="true">📌 한성대 쿠키 전체 복사하기</a>
+      <span class="text-xs text-slate-500 ml-3">← 이 버튼을 마우스로 드래그해서 즐겨찾기 막대로!</span>
+    </div>
+
+    <details class="text-xs text-emerald-900/80">
+      <summary class="cursor-pointer font-semibold">사용 방법 자세히 보기</summary>
+      <ol class="list-decimal pl-5 mt-2 space-y-1">
+        <li>크롬/엣지 즐겨찾기 막대 표시: <kbd class="bg-white border px-1.5 py-0.5 rounded">Ctrl + Shift + B</kbd></li>
+        <li>위의 보라색 버튼을 마우스로 잡아끌어서 즐겨찾기 막대에 드롭</li>
+        <li>한성대 학사 시스템(<a href="https://info.hansung.ac.kr" target="_blank" class="text-indigo-600 hover:underline">info.hansung.ac.kr</a>)에 로그인</li>
+        <li>한성대 페이지에서 방금 추가한 즐겨찾기 클릭 → "복사 완료" 알림</li>
+        <li>아래 입력란에 붙여넣기 (Ctrl+V) → 저장</li>
+      </ol>
+    </details>
+  </section>
+
+  <section class="bg-white border rounded-xl p-6 mb-6">
+    <h2 class="font-bold text-slate-900 mb-2">또는 수동으로 (F12 사용)</h2>
+    <p class="text-xs text-slate-500 mb-4">⚠️ <strong>F12는 한성대 페이지(info.hansung.ac.kr) 탭에서 누르셔야 합니다.</strong> 이 페이지(localhost) 에서 누르면 우리 시스템 쿠키만 나옵니다.</p>
+
+    <div class="space-y-4 text-sm">
+      <div class="flex gap-3">
+        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center">1</div>
+        <div>
+          <div class="font-semibold text-slate-900">한성대 학사 시스템에 로그인 (반드시 먼저!)</div>
+          <div class="text-slate-600 mt-1">
+            <a href="https://info.hansung.ac.kr" target="_blank" class="text-indigo-600 hover:underline">https://info.hansung.ac.kr ↗</a> 새 탭으로 열어 로그인 후, <strong>그 탭에 머무른 상태에서 다음 단계 진행</strong>.
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center">2</div>
+        <div class="flex-1">
+          <div class="font-semibold text-slate-900">개발자 도구 열기 (3가지 방법 중 택1)</div>
+          <ul class="text-slate-600 mt-1 list-disc pl-5 space-y-1">
+            <li>키보드 <kbd class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">F12</kbd> 키</li>
+            <li>또는 키보드 <kbd class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">Ctrl + Shift + I</kbd></li>
+            <li>또는 페이지 빈 곳에 <strong>마우스 우클릭 → "검사"</strong> 또는 "Inspect"</li>
+          </ul>
+          <div class="mt-2 text-xs text-slate-500">화면 옆이나 아래쪽에 개발자 도구 창이 열립니다.</div>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center">3</div>
+        <div class="flex-1">
+          <div class="font-semibold text-slate-900">Application(애플리케이션) 탭으로 이동</div>
+          <ul class="text-slate-600 mt-1 list-disc pl-5 space-y-1">
+            <li>개발자 도구 상단 탭 중 <strong>Application</strong> (한국어: <strong>애플리케이션</strong>) 클릭</li>
+            <li>탭이 안 보이면 상단 탭 줄의 <strong>≫</strong> 화살표 눌러서 펼치기</li>
+            <li>Firefox 쓰시면 <strong>저장소(Storage)</strong> 탭</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center">4</div>
+        <div class="flex-1">
+          <div class="font-semibold text-slate-900">왼쪽 메뉴 Cookies → info.hansung.ac.kr 클릭</div>
+          <div class="text-slate-600 mt-1">왼쪽 사이드바에서 <strong>Cookies(쿠키)</strong> 펼치기 → <strong>https://info.hansung.ac.kr</strong> 클릭</div>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center">5</div>
+        <div class="flex-1">
+          <div class="font-semibold text-slate-900">JSESSIONID 행의 Value 복사</div>
+          <div class="text-slate-600 mt-1">
+            오른쪽 표에서 Name 칸이 <strong>JSESSIONID</strong> 인 행을 찾고,
+            그 행의 <strong>Value(값)</strong> 칸을 <strong>더블클릭</strong> 하면 전체 선택됩니다 → <kbd class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">Ctrl + C</kbd> 로 복사
+          </div>
+          <div class="mt-2 bg-slate-50 border rounded p-2 text-xs font-mono text-slate-600">
+            JSESSIONID = <span class="bg-yellow-100 px-1">abc123...XYZ789.amV1c19...</span> ← 이 길쭉한 문자열
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-white border-2 border-indigo-300 rounded-xl p-6 mb-6">
+    <h2 class="font-bold text-slate-900 mb-3">📥 쿠키 붙여넣기 및 저장</h2>
+    <form method="POST" action="/admin/hansung-cookie/save">
+      <textarea name="cookie" rows="3" required
+                class="w-full border-2 border-indigo-200 focus:border-indigo-500 rounded-lg px-3 py-2 text-sm font-mono"
+                placeholder="여기에 복사한 JSESSIONID 값 붙여넣기 (Ctrl+V)"><%= '' %></textarea>
+      <button class="mt-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg px-6 py-2.5">쿠키 저장</button>
+    </form>
+  </section>
+
+  <% if (hasCookie) { %>
+  <section class="bg-white border rounded-xl p-6 mb-6">
+    <h2 class="font-bold text-slate-900 mb-3">🧪 쿠키 검증 (테스트)</h2>
+    <p class="text-sm text-slate-500 mb-3">교수 사번 하나로 시간표가 실제로 가져와지는지 테스트해보세요.</p>
+    <form method="POST" action="/admin/hansung-cookie/test" class="flex gap-2">
+      <input name="sabun" required placeholder="교수 사번 (예: 110579)" class="flex-1 border rounded-lg px-3 py-2 text-sm"
+             value="<%= sampleMembers[0]?.sabun || '' %>">
+      <button class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold">테스트 실행</button>
+    </form>
+
+    <% if (sampleMembers.length > 0) { %>
+    <div class="text-xs text-slate-500 mt-3">
+      등록된 사번 중 선택:
+      <% sampleMembers.forEach(m => { %>
+        <button onclick="document.querySelector('input[name=sabun]').value='<%= m.sabun %>'"
+                class="inline-block border rounded px-2 py-0.5 hover:bg-slate-50 ml-1"><%= m.name %> #<%= m.sabun %></button>
+      <% }) %>
+    </div>
+    <% } %>
+
+    <% if (testResult) { %>
+    <div class="mt-4 border-t pt-4">
+      <% if (testResult.ok) { %>
+        <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm">
+          <strong class="text-emerald-700">✓ 성공!</strong> 사번 <%= testResult.sabun %> 의 시간표 <%= testResult.events.length %>건을 가져왔습니다.
+        </div>
+        <% if (testResult.events.length > 0) { %>
+        <table class="w-full text-sm mt-3 border">
+          <thead class="bg-slate-50 text-xs">
+            <tr><th class="px-2 py-1.5 text-left">요일</th><th class="px-2 py-1.5 text-left">시간</th><th class="px-2 py-1.5 text-left">과목</th></tr>
+          </thead>
+          <tbody>
+            <% testResult.events.forEach(ev => { %>
+              <tr class="border-t">
+                <td class="px-2 py-1.5"><%= ['일','월','화','수','목','금','토'][ev.day] %>요일</td>
+                <td class="px-2 py-1.5 font-mono text-xs"><%= ev.start %> - <%= ev.end %></td>
+                <td class="px-2 py-1.5 text-xs"><%= ev.title %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% } %>
+      <% } else { %>
+        <div class="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm">
+          <strong class="text-rose-700">✗ 실패</strong>:
+          <% if (testResult.reason === 'auth_required') { %>
+            한성대 로그인 세션이 만료되었거나 쿠키가 올바르지 않습니다. 한성대 사이트에 다시 로그인 후 새 쿠키를 등록해주세요.
+          <% } else if (testResult.reason === 'parse_error') { %>
+            응답을 JSON 으로 파싱할 수 없습니다. 사번이 잘못되었거나 응답 형식이 변경되었을 수 있습니다.
+          <% } else if (testResult.reason === 'network_error') { %>
+            한성대 서버 연결에 실패했습니다. 네트워크를 확인해주세요.
+          <% } else { %>
+            <%= testResult.reason %>
+          <% } %>
+          <% if (testResult.raw) { %>
+          <details class="mt-2"><summary class="text-xs cursor-pointer">응답 일부 보기</summary>
+            <pre class="text-xs bg-white p-2 mt-1 rounded font-mono overflow-x-auto"><%= testResult.raw %></pre>
+          </details>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+    <% } %>
+  </section>
+  <% } %>
+
+  <section class="bg-slate-50 border rounded-xl p-5 text-sm text-slate-600">
+    <h3 class="font-bold text-slate-900 mb-2">ℹ️ 보안 안내</h3>
+    <ul class="list-disc pl-5 space-y-1 text-xs">
+      <li>쿠키는 본 운영자 세션 메모리에만 저장됩니다. 서버 재시작이나 로그아웃시 자동 삭제됩니다.</li>
+      <li>비밀번호는 시스템에 절대 전송·저장되지 않습니다.</li>
+      <li>한성대 세션은 보통 4-8시간 후 만료됩니다. 만료시 새 쿠키를 다시 등록해주세요.</li>
+      <li>본인의 한성대 계정으로 접근 가능한 정보만 크롤링됩니다 (=공개된 교수 시간표).</li>
+    </ul>
+  </section>
+</main>
+</body></html>

@@ -1,0 +1,41 @@
+<%- include('../partials/head', { pageTitle: '내 계정' }) %>
+<%- include('../partials/admin_nav') %>
+<main class="max-w-xl mx-auto px-6 py-8">
+  <h1 class="text-2xl font-bold text-slate-900 mb-2">내 계정</h1>
+
+  <section class="bg-white border rounded-xl p-6 mt-3 mb-4">
+    <h2 class="font-bold text-slate-900 mb-3">계정 정보</h2>
+    <div class="text-sm space-y-1.5">
+      <div><span class="text-slate-500 w-24 inline-block">아이디</span><strong><%= operator.username %></strong></div>
+      <div><span class="text-slate-500 w-24 inline-block">이름</span><%= operator.name %></div>
+      <div><span class="text-slate-500 w-24 inline-block">소속</span><%= operator.department || '-' %></div>
+      <div><span class="text-slate-500 w-24 inline-block">이메일</span><%= operator.email || '-' %></div>
+      <div><span class="text-slate-500 w-24 inline-block">권한</span>
+        <% if (operator.role === 'super_admin') { %><span class="badge badge-violet">시스템 관리자</span>
+        <% } else { %><span class="badge badge-blue">운영자</span><% } %>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-white border rounded-xl p-6">
+    <h2 class="font-bold text-slate-900 mb-3">비밀번호 변경</h2>
+    <% if (info) { %><div class="bg-emerald-50 text-emerald-800 text-sm rounded-lg px-3 py-2 mb-3"><%= info %></div><% } %>
+    <% if (error) { %><div class="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-3"><%= error %></div><% } %>
+    <form method="POST" action="/admin/profile/password" class="space-y-3">
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">현재 비밀번호</label>
+        <input type="password" name="current_password" required class="w-full border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">새 비밀번호</label>
+        <input type="password" name="new_password" required minlength="8" class="w-full border rounded-lg px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">새 비밀번호 확인</label>
+        <input type="password" name="new_password_confirm" required minlength="8" class="w-full border rounded-lg px-3 py-2">
+      </div>
+      <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">변경</button>
+    </form>
+  </section>
+</main>
+</body></html>

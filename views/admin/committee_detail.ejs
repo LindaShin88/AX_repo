@@ -1,0 +1,133 @@
+<%- include('../partials/head', { pageTitle: committee.name }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-7xl mx-auto px-6 py-8">
+  <a href="/admin" class="text-sm text-slate-500 hover:text-slate-900">← 대시보드</a>
+
+  <% if (locals.fromNewMeeting) { %>
+  <div class="mt-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg p-4 flex items-center justify-between">
+    <div class="text-sm">
+      💾 회의 작성을 잠시 멈추고 위원 명단을 수정중입니다. 작성내용은 자동 저장되어 있습니다.
+    </div>
+    <a href="/admin/committees/<%= committee.id %>/meetings/new" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">← 회의 작성 페이지로 돌아가기</a>
+  </div>
+  <% } %>
+  <div class="flex items-start justify-between mt-2 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900"><%= committee.name %></h1>
+      <% if (committee.description) { %><p class="text-sm text-slate-500 mt-1"><%= committee.description %></p><% } %>
+    </div>
+    <a href="/admin/committees/<%= committee.id %>/meetings/new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ 새 회의 일정 잡기</a>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-white border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-slate-900">위원 명단 (<%= members.length %>)</h2>
+        <form method="POST" action="/admin/committees/<%= committee.id %>/timetable-sync"
+              onsubmit="return confirm('등록된 한성대 세션 쿠키로 내부 위원 전원의 시간표를 자동으로 가져옵니다. 진행할까요?')">
+          <button class="text-xs bg-violet-600 hover:bg-violet-700 text-white rounded px-3 py-1.5 font-semibold">🔄 전원 시간표 일괄 동기화</button>
+        </form>
+      </div>
+
+      <% if (locals.syncResult && locals.syncResult.committeeId === committee.id) { %>
+      <div class="mb-4 border border-slate-200 rounded-lg overflow-hidden">
+        <div class="bg-slate-50 px-3 py-2 text-xs font-semibold">시간표 동기화 결과 (<%= new Date(syncResult.at).toLocaleString('ko-KR') %>)</div>
+        <table class="w-full text-xs">
+          <% syncResult.results.forEach(r => { %>
+          <tr class="border-t">
+            <td class="px-3 py-1.5"><%= r.name %> <span class="text-slate-400">#<%= r.sabun %></span></td>
+            <td class="px-3 py-1.5 text-right">
+              <% if (r.ok) { %>
+                <span class="badge badge-green">✓ <%= r.count %>건</span>
+              <% } else { %>
+                <span class="badge badge-red">✗ <%= r.reason === 'auth_required' ? '쿠키 만료' : (r.reason || '실패') %></span>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+        </table>
+      </div>
+      <% } %>
+
+      <% if (members.length > 0) { %>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-xs text-slate-500 border-b">
+            <tr><th class="py-2 text-left">이름</th><th class="text-left">구분</th><th class="text-left">소속/역할</th><th class="text-left">연락처</th><th></th></tr>
+          </thead>
+          <tbody>
+            <% members.forEach(m => { %>
+              <% let ttCount = 0; if (m.timetable_cache) { try { ttCount = (JSON.parse(m.timetable_cache)||[]).length; } catch(e){} } %>
+              <tr class="border-b last:border-b-0">
+                <td class="py-2 font-medium"><%= m.name %><% if (m.sabun) { %><span class="text-xs text-slate-400 ml-1">#<%= m.sabun %></span><% } %></td>
+                <td><span class="badge <%= m.type === 'internal' ? 'badge-blue' : 'badge-violet' %>"><%= m.type === 'internal' ? '내부' : '외부' %></span></td>
+                <td class="text-slate-600 text-xs"><%= [m.affiliation, m.role].filter(Boolean).join(' / ') %></td>
+                <td class="text-slate-600 text-xs"><%= m.email || m.phone || '-' %></td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <a href="/admin/committees/<%= committee.id %>/members/<%= m.id %>/timetable"
+                       class="text-xs border rounded px-2 py-1 hover:bg-slate-50 whitespace-nowrap">
+                      📅 시간표<% if (ttCount > 0) { %> <span class="badge badge-green ml-0.5"><%= ttCount %></span><% } %>
+                    </a>
+                    <form method="POST" action="/admin/committees/<%= committee.id %>/members/<%= m.id %>/delete" onsubmit="return confirm('삭제하시겠습니까?')">
+                      <button class="text-xs text-red-500 hover:underline">삭제</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <% } else { %>
+      <p class="text-sm text-slate-500 py-4 text-center">아직 등록된 위원이 없습니다. 아래에서 추가해주세요.</p>
+      <% } %>
+
+      <div class="mt-4 border-t pt-4">
+        <div class="text-sm font-semibold text-slate-700 mb-3">+ 위원 추가</div>
+        <form method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3">
+          <div class="col-span-2 grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-300">
+              <input type="radio" name="type" value="internal" checked> <span class="text-sm">내부 (교직원)</span>
+            </label>
+            <label class="flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer has-[:checked]:bg-violet-50 has-[:checked]:border-violet-300">
+              <input type="radio" name="type" value="external"> <span class="text-sm">외부 위원</span>
+            </label>
+          </div>
+          <input name="name" placeholder="이름 *" required class="border rounded-lg px-3 py-2 text-sm">
+          <input name="role" placeholder="역할 (위원장/위원 등)" class="border rounded-lg px-3 py-2 text-sm">
+          <input name="affiliation" placeholder="소속 (학과/직책)" class="border rounded-lg px-3 py-2 text-sm col-span-2">
+          <input name="sabun" placeholder="사번 (내부위원)" class="border rounded-lg px-3 py-2 text-sm">
+          <input name="email" placeholder="이메일" class="border rounded-lg px-3 py-2 text-sm">
+          <input name="phone" placeholder="전화번호" class="border rounded-lg px-3 py-2 text-sm col-span-2">
+          <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="bg-white border rounded-xl p-5">
+      <h2 class="font-bold text-slate-900 mb-3">회의 이력 (<%= meetings.length %>)</h2>
+      <% if (meetings.length === 0) { %>
+        <p class="text-sm text-slate-500 py-4 text-center">아직 등록된 회의가 없습니다.</p>
+      <% } %>
+      <div class="space-y-2">
+        <% meetings.forEach(m => { %>
+          <a href="/admin/meetings/<%= m.id %>" class="block border rounded-lg px-4 py-3 hover:border-indigo-400">
+            <div class="flex items-center justify-between">
+              <div class="font-medium text-sm"><%= m.title %></div>
+              <% if (m.status === 'scheduling') { %><span class="badge badge-amber">조율중</span>
+              <% } else if (m.status === 'confirmed') { %><span class="badge badge-blue">확정</span>
+              <% } else if (m.status === 'completed') { %><span class="badge badge-green">완료</span>
+              <% } %>
+            </div>
+            <div class="text-xs text-slate-500 mt-1">
+              후보 일정 <%= m.slot_count %>개 · 응답 <%= m.responded_count %>/<%= members.length %>명
+            </div>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+</main>
+</body></html>

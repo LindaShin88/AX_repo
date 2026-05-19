@@ -1,0 +1,157 @@
+<%- include('../partials/head', { pageTitle: member.name + ' 시간표' }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+  <a href="/admin/committees/<%= committee.id %>" class="text-sm text-slate-500 hover:text-slate-900">← <%= committee.name %></a>
+  <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-1"><%= member.name %> 시간표 등록</h1>
+  <p class="text-sm text-slate-500 mb-6">
+    교수님의 한성대 시간표 페이지를 저장(HTM) 하거나 캡쳐 이미지(PNG/JPG)를 업로드하면 자동 분석합니다.
+    분석 결과를 확인·수정 후 저장하면 회의 일정 자동 조율 시 충돌 시간으로 반영됩니다.
+  </p>
+
+  <% if (parseNote) { %>
+    <% if (parseNote.startsWith('parsed-')) { %>
+      <div class="bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm rounded-lg p-3 mb-4">
+        ✓ HTM 파일에서 <%= parseNote.replace('parsed-','') %>개 수업을 자동 인식했습니다. 아래에서 확인·수정 후 저장하세요.
+      </div>
+    <% } else if (parseNote.startsWith('saved-')) { %>
+      <div class="bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm rounded-lg p-3 mb-4">
+        ✓ <%= parseNote.replace('saved-','') %>개 수업 시간이 저장되었습니다. 이 위원이 포함된 회의 일정 자동 조율에 즉시 반영됩니다.
+      </div>
+    <% } else if (parseNote === 'manual-entry') { %>
+      <div class="bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-lg p-3 mb-4">
+        ⚠️ 이미지 자동 인식(OCR)은 아직 지원되지 않습니다. 아래 표에서 수동으로 수업 시간을 입력해주세요.
+      </div>
+    <% } else if (parseNote === 'no-file') { %>
+      <div class="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-lg p-3 mb-4">파일이 선택되지 않았습니다.</div>
+    <% } %>
+  <% } %>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-1">
+      <section class="bg-white border rounded-xl p-5 mb-4">
+        <h2 class="font-bold text-slate-900 mb-2">위원 정보</h2>
+        <div class="text-sm text-slate-700 space-y-1">
+          <div><strong><%= member.name %></strong></div>
+          <% if (member.sabun) { %><div class="text-xs text-slate-500">사번 <%= member.sabun %></div><% } %>
+          <% if (member.affiliation) { %><div class="text-xs text-slate-500"><%= member.affiliation %></div><% } %>
+        </div>
+        <% if (member.sabun) { %>
+          <a href="https://info.hansung.ac.kr/fuz/sugang/gyo_h_siganpyo_nopasswd.jsp?as_sabun=<%= member.sabun %>" target="_blank"
+             class="block mt-3 text-xs text-indigo-600 hover:underline">↗ 한성대 시간표 페이지 열기</a>
+        <% } %>
+      </section>
+
+      <section class="bg-white border rounded-xl p-5 mb-4">
+        <h2 class="font-bold text-slate-900 mb-3">📤 파일 업로드</h2>
+        <form method="POST" action="/admin/committees/<%= committee.id %>/members/<%= member.id %>/timetable/upload" enctype="multipart/form-data">
+          <input type="file" name="timetable_file" required accept=".htm,.html,.png,.jpg,.jpeg"
+                 class="block w-full text-sm border rounded-lg p-2 mb-2">
+          <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg py-2">
+            업로드 + 자동 분석
+          </button>
+        </form>
+        <ul class="text-xs text-slate-500 mt-3 list-disc pl-4 space-y-1">
+          <li><strong>HTM/HTML</strong>: 한성대 시간표 페이지 → 우클릭 → "다른 이름으로 저장" → 페이지 전체 → 즉시 자동 인식 가능</li>
+          <li><strong>이미지(PNG/JPG)</strong>: 화면 캡쳐 후 업로드 → 이미지 보관됨, 수업 시간은 수동 입력</li>
+          <li>최대 10MB</li>
+        </ul>
+      </section>
+
+      <% if (imagePath) { %>
+      <section class="bg-white border rounded-xl p-3">
+        <h2 class="font-bold text-slate-900 mb-2 px-2 pt-1">업로드된 파일</h2>
+        <% const fname = imagePath.split('/').pop(); %>
+        <% if (/\.(png|jpe?g|gif)$/i.test(fname)) { %>
+          <img src="/admin/timetables/<%= fname %>" alt="시간표" class="w-full rounded-lg border">
+        <% } else { %>
+          <div class="bg-slate-50 rounded p-3 text-sm text-slate-600">
+            📄 <%= fname %>
+            <a href="/admin/timetables/<%= fname %>" target="_blank" class="block text-xs text-indigo-600 hover:underline mt-1">↗ 원본 열기</a>
+          </div>
+        <% } %>
+        <form method="POST" action="/admin/committees/<%= committee.id %>/members/<%= member.id %>/timetable/clear" class="mt-2"
+              onsubmit="return confirm('업로드된 파일과 시간표 데이터를 모두 삭제하시겠습니까?')">
+          <button class="w-full text-xs text-rose-600 hover:bg-rose-50 rounded py-1.5">파일 + 시간표 삭제</button>
+        </form>
+      </section>
+      <% } %>
+    </div>
+
+    <div class="lg:col-span-2">
+      <section class="bg-white border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-slate-900">시간표 (분석 결과 확인 및 수정)</h2>
+          <button type="button" onclick="addRow()" class="text-sm bg-slate-900 text-white px-3 py-1.5 rounded-lg">+ 행 추가</button>
+        </div>
+
+        <form id="tt-form" method="POST" action="/admin/committees/<%= committee.id %>/members/<%= member.id %>/timetable/save">
+          <table class="w-full text-sm" id="tt-table">
+            <thead class="text-xs text-slate-500 border-b">
+              <tr>
+                <th class="text-left py-2 w-24">요일</th>
+                <th class="text-left py-2 w-24">시작</th>
+                <th class="text-left py-2 w-24">종료</th>
+                <th class="text-left py-2">과목명</th>
+                <th class="py-2 w-12"></th>
+              </tr>
+            </thead>
+            <tbody id="tt-rows">
+              <% events.forEach(ev => { %>
+              <tr class="border-b last:border-b-0">
+                <td class="py-2 pr-2">
+                  <select name="day" class="w-full border rounded px-2 py-1.5">
+                    <% ['일','월','화','수','목','금','토'].forEach((d, i) => { %>
+                      <option value="<%= i %>" <%= ev.day === i ? 'selected' : '' %>><%= d %>요일</option>
+                    <% }) %>
+                  </select>
+                </td>
+                <td class="py-2 pr-2"><input name="start" type="time" required value="<%= ev.start %>" class="w-full border rounded px-2 py-1.5"></td>
+                <td class="py-2 pr-2"><input name="end" type="time" required value="<%= ev.end %>" class="w-full border rounded px-2 py-1.5"></td>
+                <td class="py-2 pr-2"><input name="title" value="<%= ev.title || '' %>" placeholder="수업명" class="w-full border rounded px-2 py-1.5"></td>
+                <td class="py-2 text-center"><button type="button" onclick="this.closest('tr').remove()" class="text-rose-500 hover:bg-rose-50 px-2 py-1 rounded">✗</button></td>
+              </tr>
+              <% }) %>
+            </tbody>
+          </table>
+
+          <% if (events.length === 0) { %>
+          <div id="empty-msg" class="text-center text-slate-400 text-sm py-8">아직 등록된 수업이 없습니다. 위에서 파일을 업로드하거나 "+ 행 추가" 로 수동 입력하세요.</div>
+          <% } %>
+
+          <div class="flex gap-2 mt-4 pt-4 border-t">
+            <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-lg">시간표 저장</button>
+            <a href="/admin/committees/<%= committee.id %>" class="px-5 py-2.5 rounded-lg border hover:bg-slate-50">취소</a>
+          </div>
+        </form>
+      </section>
+
+      <p class="text-xs text-slate-400 mt-4">
+        💡 저장된 시간표는 이 위원이 포함된 회의 일정 자동 조율 시 충돌 슬롯 자동 표시에 사용됩니다.
+      </p>
+    </div>
+  </div>
+</main>
+
+<script>
+function addRow() {
+  const tbody = document.getElementById('tt-rows');
+  const empty = document.getElementById('empty-msg');
+  if (empty) empty.remove();
+  const row = document.createElement('tr');
+  row.className = 'border-b last:border-b-0';
+  row.innerHTML = `
+    <td class="py-2 pr-2">
+      <select name="day" class="w-full border rounded px-2 py-1.5">
+        ${['일','월','화','수','목','금','토'].map((d,i)=>`<option value="${i}" ${i===1?'selected':''}>${d}요일</option>`).join('')}
+      </select>
+    </td>
+    <td class="py-2 pr-2"><input name="start" type="time" required class="w-full border rounded px-2 py-1.5"></td>
+    <td class="py-2 pr-2"><input name="end" type="time" required class="w-full border rounded px-2 py-1.5"></td>
+    <td class="py-2 pr-2"><input name="title" placeholder="수업명" class="w-full border rounded px-2 py-1.5"></td>
+    <td class="py-2 text-center"><button type="button" onclick="this.closest('tr').remove()" class="text-rose-500 hover:bg-rose-50 px-2 py-1 rounded">✗</button></td>
+  `;
+  tbody.appendChild(row);
+}
+</script>
+</body></html>

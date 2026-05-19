@@ -1,0 +1,282 @@
+<%- include('../partials/head', { pageTitle: meeting.title }) %>
+<%- include('../partials/admin_nav') %>
+
+<% function fmtKor(dt) {
+  if (!dt) return '-';
+  const d = new Date(dt);
+  const day = ['일','월','화','수','목','금','토'][d.getDay()];
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getMonth()+1}/${d.getDate()}(${day}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+} %>
+
+<main class="max-w-7xl mx-auto px-6 py-8">
+  <a href="/admin/committees/<%= meeting.committee_id %>" class="text-sm text-slate-500 hover:text-slate-900">← <%= meeting.committee_name %></a>
+  <div class="flex items-start justify-between mt-2 mb-6">
+    <div>
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold text-slate-900"><%= meeting.title %></h1>
+        <% if (meeting.status === 'scheduling') { %><span class="badge badge-amber">일정 조율중</span>
+        <% } else if (meeting.status === 'confirmed') { %><span class="badge badge-blue">일정 확정</span>
+        <% } else if (meeting.status === 'completed') { %><span class="badge badge-green">완료</span><% } %>
+      </div>
+      <% if (meeting.description) { %><p class="text-sm text-slate-500 mt-1"><%= meeting.description %></p><% } %>
+      <% if (confirmedSlot) { %>
+        <div class="mt-2 inline-flex items-center gap-2 bg-blue-50 text-blue-900 px-3 py-1.5 rounded-lg text-sm">
+          <strong>확정 일정:</strong> <%= fmtKor(confirmedSlot.start_time) %> ~ <%= fmtKor(confirmedSlot.end_time).split(' ')[1] %>
+          <% if (meeting.location) { %> · <%= meeting.location %><% } %>
+        </div>
+      <% } %>
+      <div class="mt-2 flex flex-wrap gap-1.5 text-xs">
+        <% (meeting.notify_channels || 'email,sms').split(',').forEach(ch => { %>
+          <% if (ch === 'email') { %><span class="badge badge-blue">📧 이메일 발송</span><% } %>
+          <% if (ch === 'sms') { %><span class="badge badge-green">📱 SMS 발송</span><% } %>
+        <% }) %>
+        <% if (meeting.ars_after_minutes > 0) { %>
+          <span class="badge badge-amber">📞 ARS 자동전화 (응답 없으면 <%= meeting.ars_after_minutes %>분 후)</span>
+        <% } %>
+        <% if (meeting.schedule_constraints) { %>
+          <% try { var c = JSON.parse(meeting.schedule_constraints); %>
+            <span class="badge badge-gray"><%= c.window?.start %> ~ <%= c.window?.end %></span>
+            <% if (c.excludedDates?.length) { %><span class="badge badge-red">제외: <%= c.excludedDates.join(', ') %></span><% } %>
+            <% var hours = [...(c.morningHours||[]), ...(c.afternoonHours||[])]; if (hours.length) { %><span class="badge badge-violet">시작 시간: <%= hours.map(h=>h+':00').join(', ') %></span><% } %>
+          <% } catch(e) {} %>
+        <% } %>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <% if (meeting.status === 'scheduling') { %>
+      <form method="POST" action="/admin/meetings/<%= meeting.id %>/remind">
+        <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">⏰ 미응답자 리마인드</button>
+      </form>
+      <form method="POST" action="/admin/meetings/<%= meeting.id %>/ars-now" onsubmit="return confirm('SMS 미응답 위원에게 ARS 자동 전화를 시뮬레이션 발송합니다. 진행할까요?')">
+        <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">📞 ARS 즉시 발송</button>
+      </form>
+      <% } %>
+      <a href="/admin/meetings/<%= meeting.id %>/sms-send" class="bg-white border hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">📱 SMS 수동 발송</a>
+      <% if (meeting.pdf_path) { %>
+      <a href="/admin/meetings/<%= meeting.id %>/pdf" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-semibold">📄 PDF 다운로드</a>
+      <% } %>
+    </div>
+  </div>
+
+  <% const respondedSet = new Set(responses.filter(r=>!r.auto_filled).map(r=>r.member_id)); %>
+
+  <section class="bg-white border rounded-xl p-5 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-bold text-slate-900">진행 단계</h2>
+      <div class="flex items-center gap-3 text-xs">
+        <span class="text-slate-500">기존 <strong class="text-rose-600"><%= progress.manualHours %>h</strong> → 본 시스템 <strong class="text-emerald-600"><%= progress.systemHours %>h</strong></span>
+        <span class="badge badge-violet">회의 1건당 -<%= progress.savedHours %>시간 절감</span>
+      </div>
+    </div>
+    <div class="relative">
+      <div class="absolute top-5 left-0 right-0 h-1 bg-slate-100 rounded"></div>
+      <div class="absolute top-5 left-0 h-1 bg-gradient-to-r from-indigo-500 to-violet-600 rounded transition-all" style="width: <%= progress.progressPct %>%"></div>
+      <div class="relative grid grid-cols-4 gap-2">
+        <% progress.stages.forEach((s, i) => { %>
+          <div class="flex flex-col items-center text-center">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white <%= s.done ? 'bg-gradient-to-br from-indigo-500 to-violet-600' : 'bg-slate-300' %>">
+              <% if (s.done) { %>✓<% } else { %><%= i+1 %><% } %>
+            </div>
+            <div class="text-xs font-semibold mt-2 <%= s.done ? 'text-slate-900' : 'text-slate-400' %>"><%= s.label.replace(/^\d+\.\s*/, '') %></div>
+            <div class="text-[10px] text-slate-500 mt-0.5"><%= s.detail %></div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
+    <div class="bg-white border rounded-xl p-4">
+      <div class="text-xs text-slate-500">위원 수</div>
+      <div class="text-2xl font-bold mt-1"><%= members.length %></div>
+    </div>
+    <div class="bg-white border rounded-xl p-4">
+      <div class="text-xs text-slate-500">응답 완료</div>
+      <div class="text-2xl font-bold text-emerald-600 mt-1"><%= respondedSet.size %><span class="text-sm text-slate-400 font-normal">/<%= members.length %></span></div>
+    </div>
+    <div class="bg-white border rounded-xl p-4">
+      <div class="text-xs text-slate-500">서명 완료</div>
+      <div class="text-2xl font-bold text-violet-600 mt-1"><%= signatures.length %><span class="text-sm text-slate-400 font-normal">/<%= members.length %></span></div>
+    </div>
+    <div class="bg-white border rounded-xl p-4">
+      <div class="text-xs text-slate-500">발송 알림</div>
+      <div class="text-2xl font-bold text-slate-700 mt-1"><%= notifications.length %></div>
+    </div>
+  </div>
+
+  <% if (meeting.status === 'scheduling') { %>
+  <section class="bg-white border rounded-xl p-5 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-slate-900">📅 후보 일정별 응답 현황</h2>
+      <span class="text-xs text-slate-500">초록 = 가능 / 빨강 = 불가능 / 회색 = 미응답 · '시' 표시는 시간표 자동 인식</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-slate-50">
+            <th class="border-b border-slate-200 px-3 py-2 text-left text-xs sticky left-0 bg-slate-50">후보 일정</th>
+            <% members.forEach(m => { %>
+              <th class="border-b border-slate-200 px-2 py-2 text-xs text-center" style="min-width:60px;">
+                <%= m.name %>
+                <div class="text-[10px] text-slate-400 font-normal"><%= m.type === 'internal' ? '내부' : '외부' %></div>
+              </th>
+            <% }) %>
+            <th class="border-b border-slate-200 px-3 py-2 text-xs text-center">집계</th>
+            <th class="border-b border-slate-200 px-2 py-2 text-xs text-center">확정</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% slotMatrix.forEach(({ slot, cells, availableCount, unavailableCount, noResp }) => { %>
+            <tr class="hover:bg-slate-50">
+              <td class="border-b border-slate-100 px-3 py-2 font-medium text-sm sticky left-0 bg-white">
+                <%= fmtKor(slot.start_time) %>
+                <span class="text-slate-400 text-xs">~ <%= fmtKor(slot.end_time).split(' ')[1] %></span>
+              </td>
+              <% cells.forEach(({ member, response }) => { %>
+                <td class="border-b border-slate-100 px-1 py-2 text-center text-xs">
+                  <% if (!response) { %>
+                    <span class="badge badge-gray">·</span>
+                  <% } else if (response.response === 'available') { %>
+                    <span class="badge badge-green" title="<%= response.note || '' %>">O</span>
+                  <% } else if (response.response === 'unavailable') { %>
+                    <span class="badge badge-red" title="<%= response.note || '' %>">X<%= response.auto_filled ? '시' : '' %></span>
+                  <% } %>
+                </td>
+              <% }) %>
+              <td class="border-b border-slate-100 px-3 py-2 text-center text-xs">
+                <span class="text-emerald-600 font-bold"><%= availableCount %></span>
+                <span class="text-slate-300 mx-1">|</span>
+                <span class="text-red-500"><%= unavailableCount %></span>
+                <span class="text-slate-300 mx-1">|</span>
+                <span class="text-slate-400"><%= noResp %></span>
+              </td>
+              <td class="border-b border-slate-100 px-2 py-2 text-center">
+                <form method="POST" action="/admin/meetings/<%= meeting.id %>/confirm" onsubmit="return confirm('이 시간으로 회의를 확정하시겠습니까? 모든 위원에게 안내 메일이 발송됩니다.')">
+                  <input type="hidden" name="slot_id" value="<%= slot.id %>">
+                  <button class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">확정</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <% } %>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <section class="bg-white border rounded-xl p-5">
+      <h2 class="font-bold text-slate-900 mb-3">👥 위원별 응답 링크</h2>
+      <div class="space-y-2 text-sm">
+        <% members.forEach(m => { %>
+          <% const t = tokens.find(tt => tt.member_id === m.id && tt.purpose === 'availability'); %>
+          <% const responded = respondedSet.has(m.id); %>
+          <div class="flex items-center justify-between border-b last:border-b-0 py-2">
+            <div>
+              <span class="font-medium"><%= m.name %></span>
+              <span class="text-xs text-slate-500 ml-2"><%= [m.affiliation, m.role].filter(Boolean).join(' / ') %></span>
+              <span class="badge <%= m.type === 'internal' ? 'badge-blue' : 'badge-violet' %> ml-1"><%= m.type === 'internal' ? '내부' : '외부' %></span>
+            </div>
+            <div class="flex items-center gap-2">
+              <% if (responded) { %><span class="badge badge-green">응답완료</span>
+              <% } else { %><span class="badge badge-gray">대기중</span><% } %>
+              <% if (t) { %>
+              <button onclick="navigator.clipboard.writeText('<%= baseUrl %>/avail/<%= t.token %>'); this.textContent='✓ 복사됨'" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">링크 복사</button>
+              <a href="/avail/<%= t.token %>" target="_blank" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">↗ 열기</a>
+              <% } %>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+
+    <section class="bg-white border rounded-xl p-5">
+      <h2 class="font-bold text-slate-900 mb-3">📋 내부 위원 시간표 (자동 수집)</h2>
+      <div class="space-y-2">
+      <% members.filter(m => m.type === 'internal' && m.sabun).forEach(m => { %>
+        <details class="border rounded-lg">
+          <summary class="px-3 py-2 cursor-pointer text-sm font-medium hover:bg-slate-50"><%= m.name %> <span class="text-xs text-slate-500">#<%= m.sabun %></span></summary>
+          <div class="p-3 border-t">
+            <a href="<%= getTimetableImageUrl(m.sabun) %>" target="_blank" class="text-xs text-indigo-600 hover:underline">↗ 한성대 공식 시간표 보기</a>
+          </div>
+        </details>
+      <% }) %>
+      <% if (members.filter(m => m.type === 'internal' && m.sabun).length === 0) { %>
+        <p class="text-sm text-slate-500 text-center py-4">사번이 등록된 내부 위원이 없습니다.</p>
+      <% } %>
+      </div>
+    </section>
+  </div>
+
+  <% if (meeting.status === 'confirmed' || meeting.status === 'completed') { %>
+  <section class="bg-white border rounded-xl p-5 mb-6">
+    <h2 class="font-bold text-slate-900 mb-3">📝 회의록 및 서명</h2>
+    <form method="POST" action="/admin/meetings/<%= meeting.id %>/minutes" class="mb-4">
+      <textarea name="minutes_text" rows="6" class="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="회의록 내용을 입력하세요..."><%= meeting.minutes_text || '' %></textarea>
+      <button class="mt-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold">회의록 저장</button>
+    </form>
+
+    <div class="flex gap-2 mb-4">
+      <form method="POST" action="/admin/meetings/<%= meeting.id %>/request-signatures">
+        <button class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">✍️ 위원 전체 서명 요청</button>
+      </form>
+      <form method="POST" action="/admin/meetings/<%= meeting.id %>/generate-pdf">
+        <button class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">📄 회의록 PDF 생성</button>
+      </form>
+    </div>
+
+    <table class="w-full text-sm">
+      <thead class="text-xs text-slate-500 border-b">
+        <tr><th class="py-2 text-left">위원</th><th class="text-left">상태</th><th class="text-left">서명 시각</th><th class="text-left">서명 링크</th></tr>
+      </thead>
+      <tbody>
+        <% members.forEach(m => { %>
+          <% const sig = signatures.find(s => s.member_id === m.id); %>
+          <% const t = tokens.find(tt => tt.member_id === m.id && tt.purpose === 'signature'); %>
+          <tr class="border-b last:border-b-0">
+            <td class="py-2 font-medium"><%= m.name %></td>
+            <td><% if (sig) { %><span class="badge badge-green">서명완료</span><% } else { %><span class="badge badge-gray">대기중</span><% } %></td>
+            <td class="text-xs text-slate-500"><%= sig ? sig.signed_at : '-' %></td>
+            <td>
+              <% if (t) { %>
+              <button onclick="navigator.clipboard.writeText('<%= baseUrl %>/sign/<%= t.token %>'); this.textContent='✓ 복사됨'" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">링크 복사</button>
+              <a href="/sign/<%= t.token %>" target="_blank" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">↗ 열기</a>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+  <% } %>
+
+  <section class="bg-white border rounded-xl p-5">
+    <h2 class="font-bold text-slate-900 mb-3">📨 알림 발송 로그</h2>
+    <div class="space-y-2 max-h-96 overflow-y-auto">
+      <% notifications.forEach(n => { %>
+        <div class="border rounded-lg p-3">
+          <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2 text-sm">
+              <% const typeBadge = {
+                availability_request: ['badge-blue','일정 요청'],
+                reminder: ['badge-amber','리마인드'],
+                meeting_confirmed: ['badge-green','일정 확정'],
+                signature_request: ['badge-violet','서명 요청'],
+                ars_call: ['badge-red','📞 ARS 전화']
+              }[n.type] || ['badge-gray', n.type]; %>
+              <span class="badge <%= typeBadge[0] %>"><%= typeBadge[1] %></span>
+              <span class="font-medium"><%= n.member_name || '전체' %></span>
+              <span class="text-xs text-slate-400">[<%= n.channel %>]</span>
+            </div>
+            <span class="text-xs text-slate-400"><%= n.sent_at %></span>
+          </div>
+          <div class="text-xs text-slate-700 font-medium"><%= n.subject %></div>
+          <pre class="text-xs text-slate-500 mt-1 whitespace-pre-wrap font-sans"><%= n.content %></pre>
+        </div>
+      <% }) %>
+      <% if (notifications.length === 0) { %><p class="text-sm text-slate-500 text-center py-4">알림 이력이 없습니다.</p><% } %>
+    </div>
+  </section>
+</main>
+</body></html>

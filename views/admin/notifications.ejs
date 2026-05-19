@@ -1,0 +1,36 @@
+<%- include('../partials/head', { pageTitle: '알림 로그' }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+  <h1 class="text-2xl font-bold text-slate-900 mb-2">알림 발송 로그</h1>
+  <p class="text-sm text-slate-500 mb-6">시스템에서 자동/수동으로 발송된 모든 알림 기록입니다. (데모 환경에서는 실제 발송 대신 본 로그에 기록됩니다.)</p>
+
+  <div class="space-y-3">
+    <% notifications.forEach(n => { %>
+      <div class="bg-white border rounded-xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <% const typeBadge = {
+              availability_request: ['badge-blue','일정 요청'],
+              reminder: ['badge-amber','리마인드'],
+              meeting_confirmed: ['badge-green','일정 확정'],
+              signature_request: ['badge-violet','서명 요청'],
+              ars_call: ['badge-red','📞 ARS 전화']
+            }[n.type] || ['badge-gray', n.type]; %>
+            <span class="badge <%= typeBadge[0] %>"><%= typeBadge[1] %></span>
+            <span class="font-medium"><%= n.member_name || '-' %></span>
+            <span class="text-xs text-slate-400">[<%= n.channel %>]</span>
+            <span class="text-xs text-slate-500">·  <%= n.committee_name %> / <%= n.meeting_title %></span>
+          </div>
+          <span class="text-xs text-slate-400"><%= n.sent_at %></span>
+        </div>
+        <div class="text-sm font-semibold text-slate-700"><%= n.subject %></div>
+        <pre class="text-sm text-slate-600 mt-2 whitespace-pre-wrap font-sans"><%= n.content %></pre>
+      </div>
+    <% }) %>
+    <% if (notifications.length === 0) { %>
+      <p class="text-center text-slate-500 py-12">아직 발송된 알림이 없습니다.</p>
+    <% } %>
+  </div>
+</main>
+</body></html>

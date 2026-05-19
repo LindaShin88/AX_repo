@@ -1,0 +1,213 @@
+<%- include('../partials/head', { pageTitle: '운영자 관리' }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+  <div class="flex items-start justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">운영자 관리 / 전체 현황</h1>
+      <p class="text-sm text-slate-500 mt-1">가입 신청 승인, 운영자 계정 관리, 전사 위원회 운영 현황</p>
+      <p class="text-xs text-slate-400 mt-1">※ 위원회 생성·수정·삭제는 운영자 본인 권한. 슈퍼관리자는 <strong>운영자 계정만</strong> 승인/관리합니다.</p>
+    </div>
+    <button onclick="document.getElementById('add-form').classList.toggle('hidden')"
+            class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ 직접 추가</button>
+  </div>
+
+  <section class="bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 rounded-2xl p-6 mb-6 text-white">
+    <div class="flex items-center gap-2 text-indigo-100 text-xs mb-2">
+      <span>⚡</span><span>전사 누적 행정 시간 절감</span>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+      <div>
+        <div class="text-4xl md:text-5xl font-bold leading-none">
+          <%= orgStats.savedHours.toFixed(0) %><span class="text-2xl text-indigo-200 ml-1">시간</span>
+        </div>
+        <div class="text-sm text-indigo-200 mt-2">근무일 약 <strong class="text-white"><%= orgStats.savedDays.toFixed(1) %>일</strong> 절감</div>
+      </div>
+      <div>
+        <div class="text-3xl font-bold"><%= orgStats.totalMeetings %></div>
+        <div class="text-xs text-indigo-200 mt-1">총 회의 처리</div>
+      </div>
+      <div>
+        <div class="text-3xl font-bold"><%= orgStats.totalCommittees %></div>
+        <div class="text-xs text-indigo-200 mt-1">운영중 위원회</div>
+      </div>
+      <div>
+        <div class="text-3xl font-bold"><%= orgStats.totalSignatures %></div>
+        <div class="text-xs text-indigo-200 mt-1">전자서명 수집</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">활성 운영자</div>
+      <div class="text-2xl font-bold text-emerald-600 mt-1"><%= orgStats.totalOperators %></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">승인 대기</div>
+      <div class="text-2xl font-bold <%= orgStats.pendingOps > 0 ? 'text-amber-600' : 'text-slate-300' %> mt-1"><%= orgStats.pendingOps %></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">전체 위원</div>
+      <div class="text-2xl font-bold text-slate-900 mt-1"><%= orgStats.totalMembers %></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 border">
+      <div class="text-xs text-slate-500">발송 알림</div>
+      <div class="text-2xl font-bold text-violet-600 mt-1"><%= orgStats.totalNotifications %></div>
+    </div>
+  </section>
+
+  <form id="add-form" method="POST" action="/admin/users/add" class="hidden bg-white border rounded-xl p-5 mb-6 grid grid-cols-2 gap-3">
+    <div class="col-span-2 font-bold text-slate-900 text-sm">운영자 직접 추가 (가입 절차 생략)</div>
+    <input name="username" placeholder="아이디 *" required pattern="[a-zA-Z0-9_]{4,20}" class="border rounded-lg px-3 py-2 text-sm">
+    <input name="password" type="password" placeholder="초기 비밀번호 *" required minlength="8" class="border rounded-lg px-3 py-2 text-sm">
+    <input name="name" placeholder="이름 *" required class="border rounded-lg px-3 py-2 text-sm">
+    <input name="department" placeholder="소속 부서" class="border rounded-lg px-3 py-2 text-sm">
+    <input name="email" type="email" placeholder="이메일 *" required class="border rounded-lg px-3 py-2 text-sm col-span-2">
+    <button class="col-span-2 bg-indigo-600 text-white py-2 rounded-lg text-sm font-semibold">추가</button>
+  </form>
+
+  <% if (pending.length > 0) { %>
+  <section class="mb-8">
+    <h2 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+      <span class="badge badge-amber">승인 대기</span>
+      <span><%= pending.length %>건</span>
+    </h2>
+    <div class="space-y-2">
+      <% pending.forEach(u => { %>
+      <div class="bg-white border-2 border-amber-200 rounded-xl p-4">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <div class="font-semibold text-slate-900"><%= u.name %> <span class="text-xs text-slate-500">(<%= u.username %>)</span></div>
+            <div class="text-sm text-slate-600 mt-1">
+              <%= u.email %><% if (u.department) { %> · <%= u.department %><% } %>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">신청일시: <%= u.created_at %></div>
+          </div>
+          <div class="flex gap-2">
+            <form method="POST" action="/admin/users/<%= u.id %>/approve">
+              <button class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm font-semibold">✓ 승인</button>
+            </form>
+            <button onclick="document.getElementById('reject-<%= u.id %>').classList.toggle('hidden')"
+                    class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded text-sm font-semibold">✗ 거절</button>
+          </div>
+        </div>
+        <form id="reject-<%= u.id %>" method="POST" action="/admin/users/<%= u.id %>/reject" class="hidden flex gap-2 pt-2 border-t">
+          <input name="reason" placeholder="거절 사유 (선택)" class="flex-1 border rounded px-2 py-1 text-sm">
+          <button class="bg-rose-600 text-white px-3 py-1 rounded text-sm">거절 확정</button>
+        </form>
+      </div>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="mb-8">
+    <h2 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+      <span class="badge badge-green">활성</span>
+      <span>운영자 <%= active.length %>명</span>
+    </h2>
+    <% if (active.length === 0) { %>
+    <p class="text-sm text-slate-500 bg-white border rounded-xl p-6 text-center">활성 운영자가 없습니다.</p>
+    <% } else { %>
+    <div class="bg-white border rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs text-slate-500">
+          <tr>
+            <th class="text-left px-4 py-2">이름 / 아이디</th>
+            <th class="text-left px-4 py-2">소속 / 이메일</th>
+            <th class="text-center px-4 py-2">위원회</th>
+            <th class="text-left px-4 py-2">승인일</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% active.forEach(u => { %>
+          <tr class="border-t">
+            <td class="px-4 py-2">
+              <div class="font-medium"><%= u.name %></div>
+              <div class="text-xs text-slate-500"><%= u.username %></div>
+            </td>
+            <td class="px-4 py-2 text-xs">
+              <div><%= u.department || '-' %></div>
+              <div class="text-slate-500"><%= u.email %></div>
+            </td>
+            <td class="px-4 py-2 text-center">
+              <span class="badge badge-blue"><%= u.committee_count %></span>
+            </td>
+            <td class="px-4 py-2 text-xs text-slate-500">
+              <%= u.approved_at %><br>
+              <span class="text-slate-400">by <%= u.approver_name || '-' %></span>
+            </td>
+            <td class="px-4 py-2 text-right">
+              <form method="POST" action="/admin/users/<%= u.id %>/reset-password" class="inline" onsubmit="return confirm('임시 비밀번호를 발급합니다. 진행할까요?')">
+                <button class="text-xs border rounded px-2 py-1 hover:bg-slate-50">PW 초기화</button>
+              </form>
+              <form method="POST" action="/admin/users/<%= u.id %>/disable" class="inline" onsubmit="return confirm('이 운영자를 비활성화하시겠습니까? 본인 위원회는 유지됩니다.')">
+                <button class="text-xs border rounded px-2 py-1 hover:bg-slate-50 text-rose-600">비활성화</button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </section>
+
+  <% if (others.length > 0) { %>
+  <section class="mb-8">
+    <h2 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+      <span class="badge badge-gray">거절/비활성</span>
+      <span><%= others.length %>건</span>
+    </h2>
+    <div class="bg-white border rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs text-slate-500">
+          <tr><th class="text-left px-4 py-2">계정</th><th class="text-left px-4 py-2">상태 / 사유</th><th class="px-4 py-2"></th></tr>
+        </thead>
+        <tbody>
+          <% others.forEach(u => { %>
+          <tr class="border-t">
+            <td class="px-4 py-2">
+              <div class="font-medium"><%= u.name %></div>
+              <div class="text-xs text-slate-500"><%= u.username %> · <%= u.email %></div>
+            </td>
+            <td class="px-4 py-2 text-xs">
+              <span class="badge <%= u.status === 'rejected' ? 'badge-red' : 'badge-gray' %>"><%= u.status === 'rejected' ? '거절됨' : '비활성' %></span>
+              <% if (u.rejection_reason) { %><div class="text-slate-500 mt-1"><%= u.rejection_reason %></div><% } %>
+            </td>
+            <td class="px-4 py-2 text-right">
+              <form method="POST" action="/admin/users/<%= u.id %>/reactivate" class="inline" onsubmit="return confirm('이 계정을 활성화하시겠습니까?')">
+                <button class="text-xs bg-emerald-600 text-white rounded px-2 py-1">재활성화</button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <% } %>
+
+  <% if (supers.length > 0) { %>
+  <section>
+    <h2 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+      <span class="badge badge-violet">시스템 관리자</span>
+    </h2>
+    <div class="bg-white border rounded-xl p-4">
+      <% supers.forEach(s => { %>
+      <div class="flex items-center justify-between text-sm">
+        <div><strong><%= s.name %></strong> <span class="text-slate-500">(<%= s.username %>)</span></div>
+        <div class="text-xs text-slate-500"><%= s.email || '-' %></div>
+      </div>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <p class="text-xs text-slate-400 text-center mt-8">
+    가입 가능 이메일 도메인: <%= allowedDomains.length ? allowedDomains.map(d => '@' + d).join(', ') : '제한 없음' %>
+  </p>
+</main>
+</body></html>

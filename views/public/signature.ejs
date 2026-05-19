@@ -1,0 +1,72 @@
+<%- include('../partials/head', { pageTitle: '회의록 전자서명' }) %>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+
+<main class="max-w-2xl mx-auto px-4 py-8">
+  <div class="bg-white rounded-2xl shadow-sm border p-6 mb-4">
+    <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
+      <span class="badge badge-violet">로그인 불필요</span>
+      <span>전자서명 (재방문/스캔 불필요)</span>
+    </div>
+    <h1 class="text-xl font-bold text-slate-900"><%= token.committee_name %></h1>
+    <h2 class="text-2xl font-bold text-slate-900 mt-1"><%= token.title %></h2>
+    <div class="mt-3 text-sm text-slate-700">
+      <strong><%= token.member_name %></strong><% if (token.role) { %> · <%= token.role %><% } %> 님 회의록 확인 및 서명
+    </div>
+    <% if (slot) { %>
+      <div class="mt-2 text-xs text-slate-500">📅 <%= slot.start_time %> · 📍 <%= token.location || '-' %></div>
+    <% } %>
+  </div>
+
+  <% if (token.minutes_text) { %>
+  <div class="bg-white rounded-2xl border p-6 mb-4">
+    <h3 class="font-bold text-slate-900 mb-2">회의록 내용</h3>
+    <div class="bg-slate-50 rounded-lg p-4 text-sm whitespace-pre-wrap text-slate-700"><%= token.minutes_text %></div>
+  </div>
+  <% } %>
+
+  <form id="sigForm" method="POST" action="/sign/<%= token.token %>" class="bg-white rounded-2xl border p-6">
+    <h3 class="font-bold text-slate-900 mb-1">서명</h3>
+    <p class="text-xs text-slate-500 mb-3">아래 영역에 마우스 또는 손가락(터치)으로 서명해주세요.</p>
+
+    <% if (existing) { %>
+      <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3 text-sm">
+        ✓ 이미 <%= existing.signed_at %>에 서명하셨습니다. 다시 서명하면 기존 서명이 갱신됩니다.
+      </div>
+    <% } %>
+
+    <div class="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 relative">
+      <canvas id="sigCanvas" class="w-full" style="height: 220px; touch-action: none;"></canvas>
+      <button type="button" onclick="clearSig()" class="absolute top-2 right-2 text-xs bg-white border rounded px-2 py-1 hover:bg-slate-100">지우기</button>
+    </div>
+
+    <input type="hidden" name="signature_data" id="sigData">
+    <button type="submit" class="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl">서명 제출</button>
+  </form>
+
+  <p class="text-xs text-slate-400 mt-3 text-center">
+    서명 시각, IP, 접속기기 정보가 함께 기록되어 위변조를 방지합니다.
+  </p>
+</main>
+
+<script>
+const canvas = document.getElementById('sigCanvas');
+const sigPad = new SignaturePad(canvas, { penColor: 'black', backgroundColor: 'rgba(255,255,255,0)' });
+
+function resize() {
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  canvas.width = canvas.offsetWidth * ratio;
+  canvas.height = canvas.offsetHeight * ratio;
+  canvas.getContext('2d').scale(ratio, ratio);
+  sigPad.clear();
+}
+window.addEventListener('resize', resize);
+resize();
+
+function clearSig() { sigPad.clear(); }
+
+document.getElementById('sigForm').addEventListener('submit', function(e){
+  if (sigPad.isEmpty()) { e.preventDefault(); alert('서명을 입력해주세요.'); return; }
+  document.getElementById('sigData').value = sigPad.toDataURL('image/png');
+});
+</script>
+</body></html>

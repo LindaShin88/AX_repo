@@ -1,0 +1,166 @@
+<%- include('../partials/head', { pageTitle: '효과 분석' }) %>
+<%- include('../partials/admin_nav') %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<main class="max-w-7xl mx-auto px-6 py-8">
+  <a href="/admin" class="text-sm text-slate-500 hover:text-slate-900">← 대시보드</a>
+  <div class="flex items-start justify-between mt-2 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">📊 효과 분석</h1>
+      <p class="text-sm text-slate-500 mt-1">위원회 운영 자동화 도입 효과를 정량 지표로 확인합니다.</p>
+    </div>
+  </div>
+
+  <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <div class="lg:col-span-2 bg-white border rounded-xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-bold text-slate-900">기존 방식 vs 본 시스템 (회의 1건당)</h2>
+        <span class="badge badge-violet"><%= stats.reductionPct %>% 단축</span>
+      </div>
+      <div class="grid grid-cols-2 gap-6">
+        <div class="border-2 border-rose-200 bg-rose-50 rounded-xl p-5">
+          <div class="text-xs text-rose-700 font-semibold mb-2">기존 (수동 처리)</div>
+          <div class="text-4xl font-bold text-rose-700"><%= stats.manualHours %><span class="text-lg">시간</span></div>
+          <div class="text-xs text-rose-600 mt-1">≈ 근무일 <%= (stats.manualHours / 8).toFixed(1) %>일</div>
+          <ul class="text-xs text-slate-700 mt-4 space-y-1">
+            <li>· 일정 조율 메일/전화 반복: 2-3일</li>
+            <li>· 외부위원 서명 수기 수집: 2-3일</li>
+            <li>· 출력/스캔/PDF 변환: 30분</li>
+            <li>· 미응답자 재연락 / 재방문 요청</li>
+          </ul>
+        </div>
+        <div class="border-2 border-emerald-200 bg-emerald-50 rounded-xl p-5">
+          <div class="text-xs text-emerald-700 font-semibold mb-2">본 시스템 (자동화)</div>
+          <div class="text-4xl font-bold text-emerald-700"><%= stats.systemHours %><span class="text-lg">시간</span></div>
+          <div class="text-xs text-emerald-600 mt-1">≈ 1.5시간</div>
+          <ul class="text-xs text-slate-700 mt-4 space-y-1">
+            <li>· 후보 슬롯 자동 생성 + 발송</li>
+            <li>· SMS/이메일/ARS 자동 알림</li>
+            <li>· 외부위원 1클릭 전자서명</li>
+            <li>· 회의록 PDF 자동 생성</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-6 text-white flex flex-col justify-center">
+      <div class="text-xs text-emerald-100 mb-2">⏱️ 누적 절감 행정 시간</div>
+      <div class="text-5xl font-bold leading-none"><%= stats.savedHours.toFixed(0) %><span class="text-2xl text-emerald-100">h</span></div>
+      <div class="text-sm text-emerald-100 mt-2">근무일 약 <strong class="text-white"><%= stats.savedDays.toFixed(1) %>일</strong> 분량</div>
+      <hr class="my-4 border-white/20">
+      <div class="text-xs text-emerald-100 mb-1">🚶‍♂️ 외부위원 재방문 절감</div>
+      <div class="text-3xl font-bold"><%= stats.externalSignatures %><span class="text-base text-emerald-100">건</span></div>
+      <div class="text-xs text-emerald-100 mt-1">서명 위해 재방문 불필요 → 약 <%= stats.externalVisitHoursSaved %>시간 절감</div>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white border rounded-xl p-5">
+      <div class="text-xs text-slate-500 mb-1">총 회의</div>
+      <div class="text-3xl font-bold text-slate-900"><%= stats.meetings.total %></div>
+      <div class="text-xs text-slate-500 mt-2">
+        조율 <%= stats.meetings.scheduling %> · 확정 <%= stats.meetings.confirmed %> · 완료 <%= stats.meetings.completed %>
+      </div>
+    </div>
+    <div class="bg-white border rounded-xl p-5">
+      <div class="text-xs text-slate-500 mb-1">자동 발송 알림</div>
+      <div class="text-3xl font-bold text-violet-600"><%= stats.notificationCount %></div>
+      <div class="text-xs text-slate-500 mt-2">
+        <%= stats.channelBreakdown.map(c => `${c.channel}: ${c.cnt}`).join(' · ') || '-' %>
+      </div>
+    </div>
+    <div class="bg-white border rounded-xl p-5">
+      <div class="text-xs text-slate-500 mb-1">위원 응답 수집</div>
+      <div class="text-3xl font-bold text-emerald-600"><%= stats.responsesCollected %></div>
+      <div class="text-xs text-slate-500 mt-2">평균 응답시간: 메일/SMS 발송 후 자동 추적</div>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="bg-white border rounded-xl p-5">
+      <h3 class="font-bold text-slate-900 mb-3">최근 30일 회의 생성 추이</h3>
+      <canvas id="trendChart" height="120"></canvas>
+    </div>
+    <div class="bg-white border rounded-xl p-5">
+      <h3 class="font-bold text-slate-900 mb-3">알림 채널 비율</h3>
+      <canvas id="channelChart" height="120"></canvas>
+    </div>
+  </section>
+
+  <section class="bg-white border rounded-xl p-5 mb-6">
+    <h3 class="font-bold text-slate-900 mb-3">위원회별 회의 처리 현황</h3>
+    <canvas id="committeeChart" height="80"></canvas>
+  </section>
+
+  <p class="text-xs text-slate-400 text-center">
+    ※ 산출 가정: 기존 방식 회의 1건당 평균 행정 처리 시간 <%= stats.manualHours %>시간 (근무일 <%= (stats.manualHours / 8).toFixed(1) %>일), 본 시스템 도입 후 평균 <%= stats.systemHours %>시간 (기획안 KPI 기준)
+  </p>
+</main>
+
+<script>
+const trendData = <%- JSON.stringify(stats.recentMeetings) %>;
+const channelData = <%- JSON.stringify(stats.channelBreakdown) %>;
+const committeeData = <%- JSON.stringify(stats.committeeDistribution) %>;
+
+const days = [];
+const today = new Date();
+for (let i = 29; i >= 0; i--) {
+  const d = new Date(today);
+  d.setDate(today.getDate() - i);
+  days.push(d.toISOString().slice(0, 10));
+}
+const trendSeries = days.map(d => {
+  const found = trendData.find(t => t.d === d);
+  return found ? found.n : 0;
+});
+
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels: days.map(d => d.slice(5)),
+    datasets: [{
+      label: '회의 생성',
+      data: trendSeries,
+      borderColor: '#6366f1',
+      backgroundColor: 'rgba(99,102,241,.1)',
+      fill: true,
+      tension: 0.3,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+  }
+});
+
+const channelLabels = channelData.map(c => c.channel);
+const channelCounts = channelData.map(c => c.cnt);
+new Chart(document.getElementById('channelChart'), {
+  type: 'doughnut',
+  data: {
+    labels: channelLabels,
+    datasets: [{
+      data: channelCounts,
+      backgroundColor: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6']
+    }]
+  },
+  options: { responsive: true }
+});
+
+new Chart(document.getElementById('committeeChart'), {
+  type: 'bar',
+  data: {
+    labels: committeeData.map(c => c.name),
+    datasets: [
+      { label: '회의 수', data: committeeData.map(c => c.meeting_count), backgroundColor: '#6366f1' },
+      { label: '위원 수', data: committeeData.map(c => c.member_count), backgroundColor: '#10b981' },
+    ]
+  },
+  options: {
+    responsive: true,
+    indexAxis: 'y',
+    scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+  }
+});
+</script>
+</body></html>

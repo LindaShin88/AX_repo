@@ -1,0 +1,70 @@
+<%- include('../partials/head', { pageTitle: '운영자 가입 신청' }) %>
+<div class="min-h-screen flex items-center justify-center px-4 py-8">
+  <div class="bg-white rounded-2xl shadow-lg w-full max-w-lg p-8">
+    <div class="flex items-center gap-3 mb-6">
+      <span class="inline-block w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white text-center leading-[3rem] text-lg font-bold">위</span>
+      <div>
+        <div class="font-bold text-slate-900 text-lg">운영자 가입 신청</div>
+        <div class="text-xs text-slate-500">위원회 운영 담당 직원 전용</div>
+      </div>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg p-3 mb-4">
+      📋 가입 절차:<br>
+      1. 아래 정보를 입력하여 신청<br>
+      2. 시스템 관리자가 신청 내역 확인 후 승인<br>
+      3. 승인 후 로그인 가능 (이메일/메신저로 별도 안내)
+    </div>
+
+    <% if (error) { %>
+      <div class="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-4"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/admin/register" class="space-y-4">
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">아이디 <span class="text-red-500">*</span></label>
+        <input name="username" required value="<%= form.username || '' %>" pattern="[a-zA-Z0-9_]{4,20}"
+               class="w-full border rounded-lg px-3 py-2"
+               placeholder="영문/숫자 4-20자, 예: haksa1">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-slate-600 mb-1">비밀번호 <span class="text-red-500">*</span></label>
+          <input name="password" type="password" required minlength="8"
+                 class="w-full border rounded-lg px-3 py-2" placeholder="8자 이상">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-600 mb-1">비밀번호 확인 <span class="text-red-500">*</span></label>
+          <input name="password_confirm" type="password" required minlength="8"
+                 class="w-full border rounded-lg px-3 py-2">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">이름 <span class="text-red-500">*</span></label>
+        <input name="name" required value="<%= form.name || '' %>"
+               class="w-full border rounded-lg px-3 py-2" placeholder="예: 김행정">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">소속 부서</label>
+        <input name="department" value="<%= form.department || '' %>"
+               class="w-full border rounded-lg px-3 py-2" placeholder="예: 학사팀">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">이메일 <span class="text-red-500">*</span></label>
+        <input name="email" type="email" required value="<%= form.email || '' %>"
+               class="w-full border rounded-lg px-3 py-2"
+               placeholder="<%= allowedDomains.length ? '예: yourname@' + allowedDomains[0] : '' %>">
+        <% if (allowedDomains.length) { %>
+        <p class="text-xs text-slate-500 mt-1">※ 가입 가능 도메인: <%= allowedDomains.map(d => '@' + d).join(', ') %></p>
+        <% } %>
+      </div>
+
+      <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg py-2.5 mt-2">가입 신청</button>
+    </form>
+
+    <div class="mt-4 text-center">
+      <a href="/admin/login" class="text-sm text-slate-500 hover:text-slate-900">← 로그인 화면으로</a>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -1,0 +1,204 @@
+<%- include('../partials/head', { pageTitle: '새 회의 일정' }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-3xl mx-auto px-6 py-8">
+  <div class="flex items-center justify-between mb-2">
+    <a href="/admin/committees/<%= committee.id %>" class="text-sm text-slate-500 hover:text-slate-900">← <%= committee.name %></a>
+    <button type="button" onclick="goEditMembers()" class="text-sm border bg-white hover:bg-slate-50 rounded-lg px-3 py-1.5">
+      👥 위원 명단 수정하기 (작성내용 유지)
+    </button>
+  </div>
+  <h1 class="text-2xl font-bold text-slate-900 mb-2">새 회의 일정 잡기</h1>
+  <p class="text-sm text-slate-500 mb-6">조건을 입력하면 시스템이 후보 일정을 자동 생성하고, 위원들에게 응답 링크를 발송합니다.</p>
+
+  <div id="restored-banner" class="hidden bg-amber-50 border border-amber-300 text-amber-900 text-sm rounded-lg p-3 mb-4">
+    💾 이전에 작성하던 회의 정보가 자동으로 복원되었습니다.
+    <button type="button" onclick="clearDraft(true)" class="ml-2 underline text-amber-700">초기화</button>
+  </div>
+
+  <form id="meeting-form" method="POST" action="/admin/committees/<%= committee.id %>/meetings" class="space-y-5">
+
+    <section class="bg-white border rounded-xl p-6 space-y-4">
+      <h2 class="font-bold text-slate-900">1. 기본 정보</h2>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">회의명 <span class="text-red-500">*</span></label>
+        <input name="title" required class="w-full border rounded-lg px-3 py-2" placeholder="예: 2026-1학기 정기회의">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">회의 장소</label>
+          <input name="location" class="w-full border rounded-lg px-3 py-2" placeholder="예: 본관 회의실 301">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">회의 시간 (분)</label>
+          <select name="duration_minutes" class="w-full border rounded-lg px-3 py-2">
+            <option value="30">30분</option>
+            <option value="60" selected>60분</option>
+            <option value="90">90분</option>
+            <option value="120">120분</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">안건 / 회의 안내사항</label>
+        <textarea name="description" rows="2" class="w-full border rounded-lg px-3 py-2" placeholder="안건, 사전 검토 자료, 기타 안내"></textarea>
+      </div>
+    </section>
+
+    <section class="bg-white border rounded-xl p-6 space-y-4">
+      <h2 class="font-bold text-slate-900">2. 가능 일정 조건</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">날짜 범위 - 시작</label>
+          <input type="date" name="window_start" required value="<%= defaults.window.start %>" class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">날짜 범위 - 종료</label>
+          <input type="date" name="window_end" required value="<%= defaults.window.end %>" class="w-full border rounded-lg px-3 py-2">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">제외 날짜 (콤마 또는 줄바꿈)</label>
+        <input name="excluded_dates" class="w-full border rounded-lg px-3 py-2" placeholder="2026-05-22, 2026-05-25">
+        <p class="text-xs text-slate-500 mt-1">전체 불가능한 날짜를 입력합니다. 위 범위 안에서 자동으로 제외됩니다.</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-2">전체 기간 - 가능한 시작 시간</label>
+        <div class="flex flex-wrap gap-2 text-sm mb-2">
+          <span class="text-xs text-slate-500 w-12">오전</span>
+          <% [9,10,11,12].forEach(h => { %>
+            <label class="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-300">
+              <input type="checkbox" name="morning_hours" value="<%= h %>" <%= h === 10 ? 'checked' : '' %>>
+              <span><%= h %>:00</span>
+            </label>
+          <% }) %>
+        </div>
+        <div class="flex flex-wrap gap-2 text-sm">
+          <span class="text-xs text-slate-500 w-12">오후</span>
+          <% [13,14,15,16,17].forEach(h => { %>
+            <label class="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-300">
+              <input type="checkbox" name="afternoon_hours" value="<%= h %>" <%= [13,14,15].includes(h) ? 'checked' : '' %>>
+              <span><%= h %>:00</span>
+            </label>
+          <% }) %>
+        </div>
+        <p class="text-xs text-slate-500 mt-1.5">선택한 시간만 회의 시작시간으로 후보에 포함됩니다.</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">특정 날짜만 다른 시간 (선택)</label>
+        <textarea name="date_overrides" rows="2" class="w-full border rounded-lg px-3 py-2 font-mono text-xs" placeholder="2026-05-23 : 10
+2026-05-26 : 13, 14"></textarea>
+        <p class="text-xs text-slate-500 mt-1">예: <code class="bg-slate-100 px-1 rounded">2026-05-23 : 10</code> = 그 날만 10시 시작 후보로. 한 줄 한 날짜.</p>
+      </div>
+    </section>
+
+    <section class="bg-white border rounded-xl p-6 space-y-4">
+      <h2 class="font-bold text-slate-900">3. 알림 발송 설정</h2>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-2">발송 채널 (위원에게 가능일정 응답 링크 보내기)</label>
+        <div class="flex gap-2">
+          <label class="flex items-center gap-2 border rounded-lg px-4 py-2 cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-300">
+            <input type="checkbox" name="notify_channels" value="email" checked>
+            <span>📧 이메일</span>
+          </label>
+          <label class="flex items-center gap-2 border rounded-lg px-4 py-2 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-300">
+            <input type="checkbox" name="notify_channels" value="sms" checked>
+            <span>📱 SMS / MMS</span>
+          </label>
+        </div>
+        <p class="text-xs text-slate-500 mt-1.5">SMS는 휴대전화 번호가 등록된 위원에게만 발송됩니다.</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-2">📞 ARS 자동 전화 (SMS 발송 후 응답 없을 때)</label>
+        <select name="ars_after_minutes" class="w-full border rounded-lg px-3 py-2">
+          <option value="0">사용 안함</option>
+          <option value="2">2분 후 (데모용)</option>
+          <option value="60">1시간 후</option>
+          <option value="180">3시간 후</option>
+          <option value="360">6시간 후</option>
+          <option value="720" selected>12시간 후</option>
+          <option value="1440">24시간 후</option>
+        </select>
+        <p class="text-xs text-slate-500 mt-1.5">SMS 응답이 없는 위원에게 자동으로 ARS 전화가 발신됩니다. (현재는 발송 로그로 시뮬레이션)</p>
+      </div>
+    </section>
+
+    <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm">
+      <div class="font-semibold text-indigo-900 mb-1">⚡ 처리 요약</div>
+      <ul class="list-disc pl-5 text-indigo-900/90 text-xs space-y-1">
+        <li>입력한 조건에 맞춰 후보 슬롯 6개 자동 생성</li>
+        <li>내부위원 시간표 충돌 슬롯은 자동 '불가' 표시</li>
+        <li>전체 위원 (<%= members.length %>명) 에게 응답 링크 발송 (이메일/SMS)</li>
+        <li>SMS 응답 미회신시 ARS 자동 전화 (설정시)</li>
+      </ul>
+    </div>
+
+    <div class="flex gap-2">
+      <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold">회의 생성 및 일정 조율 시작</button>
+      <a href="/admin/committees/<%= committee.id %>" onclick="clearDraft(false)" class="px-5 py-2.5 rounded-lg border hover:bg-slate-50">취소</a>
+    </div>
+  </form>
+</main>
+
+<script>
+const DRAFT_KEY = 'meeting_new_draft_committee_<%= committee.id %>';
+const form = document.getElementById('meeting-form');
+
+function saveDraft() {
+  const data = {};
+  for (const el of form.elements) {
+    if (!el.name) continue;
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      if (el.checked) {
+        if (!data[el.name]) data[el.name] = [];
+        data[el.name].push(el.value);
+      }
+    } else {
+      data[el.name] = el.value;
+    }
+  }
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(data)); } catch(e) {}
+}
+
+function restoreDraft() {
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch(e) { return; }
+  if (!raw) return;
+  let data; try { data = JSON.parse(raw); } catch(e) { return; }
+  let restored = false;
+  for (const el of form.elements) {
+    if (!el.name) continue;
+    if (!(el.name in data)) continue;
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      el.checked = data[el.name].includes(el.value);
+    } else if (el.value !== data[el.name]) {
+      el.value = data[el.name];
+      restored = true;
+    }
+    if (data[el.name] && (data[el.name].length || data[el.name] !== '')) restored = true;
+  }
+  if (restored) document.getElementById('restored-banner').classList.remove('hidden');
+}
+
+function clearDraft(confirmFirst) {
+  if (confirmFirst && !confirm('작성 내용을 모두 지우시겠습니까?')) return;
+  try { localStorage.removeItem(DRAFT_KEY); } catch(e) {}
+  if (confirmFirst) location.reload();
+}
+
+function goEditMembers() {
+  saveDraft();
+  location.href = '/admin/committees/<%= committee.id %>?from=new-meeting';
+}
+
+form.addEventListener('input', saveDraft);
+form.addEventListener('change', saveDraft);
+form.addEventListener('submit', () => { try { localStorage.removeItem(DRAFT_KEY); } catch(e) {} });
+
+restoreDraft();
+</script>
+</body></html>
