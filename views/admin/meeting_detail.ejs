@@ -9,6 +9,10 @@
   return `${d.getMonth()+1}/${d.getDate()}(${day}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 } %>
 
+<%
+  const TYPE_LABEL = { faculty: '교원', staff: '직원', student: '학생', external: '외부' };
+  const TYPE_BADGE = { faculty: 'badge-blue', staff: 'badge-amber', student: 'badge-green', external: 'badge-violet' };
+%>
 <main class="max-w-7xl mx-auto px-6 py-8">
   <a href="/admin/committees/<%= meeting.committee_id %>" class="text-sm text-slate-500 hover:text-slate-900">← <%= meeting.committee_name %></a>
   <div class="flex items-start justify-between mt-2 mb-6">
@@ -105,7 +109,52 @@
     </div>
   </div>
 
+  <%
+    const QUORUM = meeting.quorum || 0;
+    let bestQuorumSlot = null;
+    let bestAvail = -1;
+    slotMatrix.forEach(({ slot, availableCount }) => {
+      if (availableCount > bestAvail) { bestAvail = availableCount; bestQuorumSlot = { slot, availableCount }; }
+    });
+    const canForceConfirm = QUORUM > 0 && bestAvail >= QUORUM;
+  %>
   <% if (meeting.status === 'scheduling') { %>
+  <% if (locals.actionFlag === 'remind-sent') { %>
+  <div class="mb-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⏰ 미응답자에게 리마인드 메일 발송 완료 (실제 발송 여부는 아래 알림 로그에서 확인)</div>
+  <% } %>
+  <% if (locals.actionFlag === 'force-confirmed') { %>
+  <div class="mb-4 bg-blue-50 border border-blue-300 text-blue-900 rounded-lg px-3 py-2 text-sm">✅ 강제 확정 완료. 모든 위원에게 일정확정 메일 발송됨.</div>
+  <% } else if (locals.actionFlag === 'confirmed') { %>
+  <div class="mb-4 bg-blue-50 border border-blue-300 text-blue-900 rounded-lg px-3 py-2 text-sm">✅ 일정 확정 완료. 모든 위원에게 안내 메일 발송됨.</div>
+  <% } %>
+
+  <% if (QUORUM > 0) { %>
+  <section class="mb-4 bg-gradient-to-r <%= canForceConfirm ? 'from-emerald-50 to-blue-50 border-emerald-300' : 'from-amber-50 to-rose-50 border-amber-300' %> border rounded-xl p-4">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <div class="text-xs text-slate-500">정족수 (성원)</div>
+        <div class="text-lg font-bold mt-0.5">
+          최대 가능 인원 <span class="<%= canForceConfirm ? 'text-emerald-700' : 'text-amber-700' %>"><%= bestAvail %></span>
+          <span class="text-slate-400 text-sm">/ 정족수 <%= QUORUM %> / 위원 전체 <%= members.length %></span>
+        </div>
+        <% if (canForceConfirm) { %>
+          <div class="text-xs text-emerald-800 mt-1">✅ 미응답자가 있어도 가능 응답자만으로 성원 충족. 아래 버튼으로 강제 확정 가능.</div>
+        <% } else { %>
+          <div class="text-xs text-amber-800 mt-1">⚠️ 아직 정족수 미달 — 리마인드 후 응답을 추가로 받아야 함.</div>
+        <% } %>
+      </div>
+      <% if (canForceConfirm && bestQuorumSlot) { %>
+      <form method="POST" action="/admin/meetings/<%= meeting.id %>/confirm"
+            onsubmit="return confirm('성원 충족: 미응답자 있어도 다음 일정으로 강제 확정합니다.\n\n· <%= fmtKor(bestQuorumSlot.slot.start_time) %>\n· 가능 응답 <%= bestAvail %>명 (정족수 <%= QUORUM %>)\n\n진행할까요?')">
+        <input type="hidden" name="slot_id" value="<%= bestQuorumSlot.slot.id %>">
+        <input type="hidden" name="force" value="1">
+        <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-3 rounded-lg text-sm shadow">⚡ 성원 충족 → 강제 확정<br><span class="font-normal text-xs"><%= fmtKor(bestQuorumSlot.slot.start_time) %></span></button>
+      </form>
+      <% } %>
+    </div>
+  </section>
+  <% } %>
+
   <section class="bg-white border rounded-xl p-5 mb-6">
     <div class="flex items-center justify-between mb-3">
       <h2 class="font-bold text-slate-900">📅 후보 일정별 응답 현황</h2>
@@ -119,7 +168,7 @@
             <% members.forEach(m => { %>
               <th class="border-b border-slate-200 px-2 py-2 text-xs text-center" style="min-width:60px;">
                 <%= m.name %>
-                <div class="text-[10px] text-slate-400 font-normal"><%= m.type === 'internal' ? '내부' : '외부' %></div>
+                <div class="text-[10px] text-slate-400 font-normal"><%= TYPE_LABEL[m.type] || m.type %></div>
               </th>
             <% }) %>
             <th class="border-b border-slate-200 px-3 py-2 text-xs text-center">집계</th>
@@ -167,7 +216,15 @@
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <section class="bg-white border rounded-xl p-5">
-      <h2 class="font-bold text-slate-900 mb-3">👥 위원별 응답 링크</h2>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-slate-900">👥 위원별 응답 링크</h2>
+        <% if (!locals.smtpConfigured) { %>
+        <a href="/admin/settings/smtp" class="text-xs bg-amber-100 text-amber-900 border border-amber-300 rounded px-2 py-1">⚠️ SMTP 미설정 — 자동 메일 발송 불가</a>
+        <% } else { %>
+        <span class="text-xs text-emerald-700">✅ 메일 자동 발송 활성</span>
+        <% } %>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">아래 링크를 복사해서 직접 SMS/카톡으로 보내실 수 있어요. 이메일은 위원 이메일로 자동 발송 (SMTP 설정 시).</p>
       <div class="space-y-2 text-sm">
         <% members.forEach(m => { %>
           <% const t = tokens.find(tt => tt.member_id === m.id && tt.purpose === 'availability'); %>
@@ -176,7 +233,7 @@
             <div>
               <span class="font-medium"><%= m.name %></span>
               <span class="text-xs text-slate-500 ml-2"><%= [m.affiliation, m.role].filter(Boolean).join(' / ') %></span>
-              <span class="badge <%= m.type === 'internal' ? 'badge-blue' : 'badge-violet' %> ml-1"><%= m.type === 'internal' ? '내부' : '외부' %></span>
+              <span class="badge <%= TYPE_BADGE[m.type] || 'badge-violet' %> ml-1"><%= TYPE_LABEL[m.type] || m.type %></span>
             </div>
             <div class="flex items-center gap-2">
               <% if (responded) { %><span class="badge badge-green">응답완료</span>
@@ -194,7 +251,7 @@
     <section class="bg-white border rounded-xl p-5">
       <h2 class="font-bold text-slate-900 mb-3">📋 내부 위원 시간표 (자동 수집)</h2>
       <div class="space-y-2">
-      <% members.filter(m => m.type === 'internal' && m.sabun).forEach(m => { %>
+      <% members.filter(m => m.type === 'faculty' && m.sabun).forEach(m => { %>
         <details class="border rounded-lg">
           <summary class="px-3 py-2 cursor-pointer text-sm font-medium hover:bg-slate-50"><%= m.name %> <span class="text-xs text-slate-500">#<%= m.sabun %></span></summary>
           <div class="p-3 border-t">
@@ -202,7 +259,7 @@
           </div>
         </details>
       <% }) %>
-      <% if (members.filter(m => m.type === 'internal' && m.sabun).length === 0) { %>
+      <% if (members.filter(m => m.type === 'faculty' && m.sabun).length === 0) { %>
         <p class="text-sm text-slate-500 text-center py-4">사번이 등록된 내부 위원이 없습니다.</p>
       <% } %>
       </div>

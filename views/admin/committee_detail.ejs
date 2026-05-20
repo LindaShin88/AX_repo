@@ -20,34 +20,58 @@
     <a href="/admin/committees/<%= committee.id %>/meetings/new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ 새 회의 일정 잡기</a>
   </div>
 
+  <%
+    const TYPE_LABEL = { faculty: '교원', staff: '직원', student: '학생', external: '외부 위원' };
+    const TYPE_BADGE = { faculty: 'badge-blue', staff: 'badge-amber', student: 'badge-green', external: 'badge-violet' };
+  %>
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="bg-white border rounded-xl p-5">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-bold text-slate-900">위원 명단 (<%= members.length %>)</h2>
-        <form method="POST" action="/admin/committees/<%= committee.id %>/timetable-sync"
-              onsubmit="return confirm('등록된 한성대 세션 쿠키로 내부 위원 전원의 시간표를 자동으로 가져옵니다. 진행할까요?')">
-          <button class="text-xs bg-violet-600 hover:bg-violet-700 text-white rounded px-3 py-1.5 font-semibold">🔄 전원 시간표 일괄 동기화</button>
-        </form>
+        <span class="text-xs text-slate-400">🤖 교원 추가 시 한성대 시간표 자동 연결</span>
       </div>
 
-      <% if (locals.syncResult && locals.syncResult.committeeId === committee.id) { %>
-      <div class="mb-4 border border-slate-200 rounded-lg overflow-hidden">
-        <div class="bg-slate-50 px-3 py-2 text-xs font-semibold">시간표 동기화 결과 (<%= new Date(syncResult.at).toLocaleString('ko-KR') %>)</div>
-        <table class="w-full text-xs">
-          <% syncResult.results.forEach(r => { %>
-          <tr class="border-t">
-            <td class="px-3 py-1.5"><%= r.name %> <span class="text-slate-400">#<%= r.sabun %></span></td>
-            <td class="px-3 py-1.5 text-right">
-              <% if (r.ok) { %>
-                <span class="badge badge-green">✓ <%= r.count %>건</span>
-              <% } else { %>
-                <span class="badge badge-red">✗ <%= r.reason === 'auth_required' ? '쿠키 만료' : (r.reason || '실패') %></span>
-              <% } %>
-            </td>
-          </tr>
-          <% }) %>
-        </table>
+      <% if (locals.errFlag === 'name-email-required') { %>
+      <div class="mb-4 bg-red-50 border border-red-300 text-red-800 rounded-lg px-3 py-2 text-sm">
+        ⚠️ 이름과 이메일은 필수 입력 항목입니다.
       </div>
+      <% } %>
+
+      <% if (locals.memberAddIssue) { %>
+      <div class="mb-4 bg-indigo-50 border border-indigo-300 text-indigo-900 rounded-lg px-3 py-3 text-sm">
+        📨 <strong><%= memberAddIssue.memberName %></strong> 위원에게 진행중인 회의 <strong><%= memberAddIssue.meetings.length %>건</strong>의 응답 링크가 자동 발급됐어요.
+        <ul class="mt-1 text-xs text-indigo-800 list-disc pl-5">
+          <% memberAddIssue.meetings.forEach(m => { %><li><a class="underline" href="/admin/meetings/<%= m.meetingId %>">#<%= m.meetingId %> <%= m.title %></a></li><% }) %>
+        </ul>
+      </div>
+      <% } %>
+
+      <% if (locals.autoCrawl) { %>
+        <% if (autoCrawl.error) { %>
+        <div class="mb-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-3 text-sm">
+          ⚠️ <strong><%= autoCrawl.name %></strong> 교원 추가됨. 시간표 자동 연결 실패: <code class="text-xs"><%= autoCrawl.error %></code>
+        </div>
+        <% } else if ((autoCrawl.matchedMajors || []).length === 0) { %>
+        <div class="mb-4 bg-slate-50 border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-sm">
+          ℹ️ <strong><%= autoCrawl.name %></strong> 교원 추가됨. <%= autoCrawl.yearhakgi %> 학기 한성대 OC 시간표에 동일 이름 강의 없음.
+        </div>
+        <% } else { %>
+        <div class="mb-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-3 text-sm">
+          ✅ <strong><%= autoCrawl.name %></strong> 교원 추가 + 시간표 자동 연결 완료
+          (<%= autoCrawl.yearhakgi.slice(0,4) %>-<%= autoCrawl.yearhakgi.slice(4) %>학기, 강의 <%= autoCrawl.classCount %>건, 슬롯 <%= autoCrawl.slotCount %>개)
+          <% if (autoCrawl.matchedMajors.length > 1) { %>
+            <div class="mt-2 text-xs">
+              🔀 여러 학과에서 동일 이름 매칭 (자동 병합):
+              <% autoCrawl.matchedMajors.forEach((mm,i)=>{ %>
+                <span class="inline-block bg-white border border-emerald-400 text-emerald-800 rounded px-2 py-0.5 mr-1"><%= mm.name %> (<%= mm.classCount %>건)</span>
+              <% }) %>
+              <div class="mt-1 text-slate-600">→ 동명이인이면 위원 카드의 [시간표] 버튼에서 해당 강의 삭제 가능</div>
+            </div>
+          <% } else { %>
+            <div class="mt-1 text-xs text-emerald-800">출처: <%= autoCrawl.matchedMajors[0].name %></div>
+          <% } %>
+        </div>
+        <% } %>
       <% } %>
 
       <% if (members.length > 0) { %>
@@ -59,9 +83,11 @@
           <tbody>
             <% members.forEach(m => { %>
               <% let ttCount = 0; if (m.timetable_cache) { try { ttCount = (JSON.parse(m.timetable_cache)||[]).length; } catch(e){} } %>
+              <% let ttMeta = null; if (m.timetable_meta) { try { ttMeta = JSON.parse(m.timetable_meta); } catch(e){} } %>
+              <% const multiMajor = ttMeta && (ttMeta.matchedMajors||[]).length > 1; %>
               <tr class="border-b last:border-b-0">
                 <td class="py-2 font-medium"><%= m.name %><% if (m.sabun) { %><span class="text-xs text-slate-400 ml-1">#<%= m.sabun %></span><% } %></td>
-                <td><span class="badge <%= m.type === 'internal' ? 'badge-blue' : 'badge-violet' %>"><%= m.type === 'internal' ? '내부' : '외부' %></span></td>
+                <td><span class="badge <%= TYPE_BADGE[m.type] || 'badge-violet' %>"><%= TYPE_LABEL[m.type] || m.type %></span></td>
                 <td class="text-slate-600 text-xs"><%= [m.affiliation, m.role].filter(Boolean).join(' / ') %></td>
                 <td class="text-slate-600 text-xs"><%= m.email || m.phone || '-' %></td>
                 <td>
@@ -69,6 +95,7 @@
                     <a href="/admin/committees/<%= committee.id %>/members/<%= m.id %>/timetable"
                        class="text-xs border rounded px-2 py-1 hover:bg-slate-50 whitespace-nowrap">
                       📅 시간표<% if (ttCount > 0) { %> <span class="badge badge-green ml-0.5"><%= ttCount %></span><% } %>
+                      <% if (multiMajor) { %><span class="badge badge-amber ml-0.5" title="여러 학과에서 동일 이름 매칭">🔀<%= ttMeta.matchedMajors.length %></span><% } %>
                     </a>
                     <form method="POST" action="/admin/committees/<%= committee.id %>/members/<%= m.id %>/delete" onsubmit="return confirm('삭제하시겠습니까?')">
                       <button class="text-xs text-red-500 hover:underline">삭제</button>
@@ -85,23 +112,30 @@
       <% } %>
 
       <div class="mt-4 border-t pt-4">
-        <div class="text-sm font-semibold text-slate-700 mb-3">+ 위원 추가</div>
+        <div class="text-sm font-semibold text-slate-700 mb-1">+ 위원 추가</div>
+        <div class="text-xs text-slate-500 mb-3">교원으로 추가하면 한성대 OC 시간표에서 동일 이름 강의를 자동으로 가져옵니다 (1-2초 소요).</div>
         <form method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3">
-          <div class="col-span-2 grid grid-cols-2 gap-2">
-            <label class="flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-300">
-              <input type="radio" name="type" value="internal" checked> <span class="text-sm">내부 (교직원)</span>
+          <div class="col-span-2 grid grid-cols-4 gap-2">
+            <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-400">
+              <input type="radio" name="type" value="faculty" checked> <span class="text-xs">교원</span>
             </label>
-            <label class="flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer has-[:checked]:bg-violet-50 has-[:checked]:border-violet-300">
-              <input type="radio" name="type" value="external"> <span class="text-sm">외부 위원</span>
+            <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-amber-50 has-[:checked]:border-amber-400">
+              <input type="radio" name="type" value="staff"> <span class="text-xs">직원</span>
+            </label>
+            <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-400">
+              <input type="radio" name="type" value="student"> <span class="text-xs">학생</span>
+            </label>
+            <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-violet-50 has-[:checked]:border-violet-400">
+              <input type="radio" name="type" value="external"> <span class="text-xs">외부위원</span>
             </label>
           </div>
           <input name="name" placeholder="이름 *" required class="border rounded-lg px-3 py-2 text-sm">
-          <input name="role" placeholder="역할 (위원장/위원 등)" class="border rounded-lg px-3 py-2 text-sm">
-          <input name="affiliation" placeholder="소속 (학과/직책)" class="border rounded-lg px-3 py-2 text-sm col-span-2">
-          <input name="sabun" placeholder="사번 (내부위원)" class="border rounded-lg px-3 py-2 text-sm">
-          <input name="email" placeholder="이메일" class="border rounded-lg px-3 py-2 text-sm">
-          <input name="phone" placeholder="전화번호" class="border rounded-lg px-3 py-2 text-sm col-span-2">
-          <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가</button>
+          <input name="email" type="email" placeholder="이메일 *" required class="border rounded-lg px-3 py-2 text-sm">
+          <input name="role" placeholder="역할 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input name="affiliation" placeholder="소속 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input name="sabun" placeholder="사번 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input name="phone" placeholder="전화번호 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가 (교원은 시간표 자동 연결)</button>
         </form>
       </div>
     </div>

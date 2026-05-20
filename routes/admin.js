@@ -8,6 +8,8 @@ const db = require('../database');
 const { requireAdmin } = require('../middleware/auth');
 const { parseUploadedFile } = require('../services/timetable_parser');
 const { fetchTimetableRaw, fcEventsToTimetable } = require('../services/timetable');
+const hansungOc = require('../services/hansung_oc');
+const mailer = require('../services/mailer');
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'data', 'timetables');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -101,20 +103,123 @@ router.get('/committees/:id', (req, res) => {
   if (syncResult && req.query.sync !== 'done') {
     delete req.session.lastSyncResult;
   }
+  const autoCrawl = req.session.lastFacultyAutoCrawl && req.session.lastFacultyAutoCrawl.committeeId === committee.id
+    ? req.session.lastFacultyAutoCrawl : null;
+  if (autoCrawl) delete req.session.lastFacultyAutoCrawl;
+  const memberAddIssue = req.session.lastMemberAddIssue && req.session.lastMemberAddIssue.committeeId === committee.id
+    ? req.session.lastMemberAddIssue : null;
+  if (memberAddIssue) delete req.session.lastMemberAddIssue;
   res.render('admin/committee_detail', {
     committee, members, meetings,
     fromNewMeeting: req.query.from === 'new-meeting',
     syncResult,
+    autoCrawl,
+    memberAddIssue,
+    errFlag: req.query.err || null,
   });
 });
 
-router.post('/committees/:id/members', (req, res) => {
-  const { name, email, phone, type, sabun, role, affiliation } = req.body;
-  db.prepare(`
+const VALID_MEMBER_TYPES = new Set(['faculty', 'staff', 'student', 'external']);
+
+router.post('/committees/:id/members', async (req, res) => {
+  const committee = db.prepare('SELECT id FROM committees WHERE id = ? AND operator_id = ?')
+    .get(req.params.id, req.session.operatorId);
+  if (!committee) return res.status(404).send('Not found');
+
+  const name = String(req.body.name || '').trim();
+  const email = String(req.body.email || '').trim();
+  if (!name || !email) return res.redirect(`/admin/committees/${req.params.id}?err=name-email-required`);
+
+  let type = String(req.body.type || 'faculty').trim();
+  if (!VALID_MEMBER_TYPES.has(type)) type = 'faculty';
+
+  const phone = String(req.body.phone || '').trim() || null;
+  const sabun = String(req.body.sabun || '').trim() || null;
+  const role = String(req.body.role || '').trim() || null;
+  const affiliation = String(req.body.affiliation || '').trim() || null;
+
+  const info = db.prepare(`
     INSERT INTO members (committee_id, name, email, phone, type, sabun, role, affiliation)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.params.id, name, email || null, phone || null, type, sabun || null, role || null, affiliation || null);
-  res.redirect(`/admin/committees/${req.params.id}`);
+  `).run(committee.id, name, email, phone, type, sabun, role, affiliation);
+  const memberId = info.lastInsertRowid;
+
+  if (type === 'faculty') {
+    const yearhakgi = hansungOc.dateToYearHakgi(new Date());
+    try {
+      const result = await hansungOc.findProfessorClasses(yearhakgi, name, { concurrency: 6 });
+      const cacheEntries = result.timetable.map(e => ({
+        day: e.day, start: e.start, end: e.end, title: e.title,
+        location: e.location, bunban: e.bunban, major: e.major, majorCode: e.majorCode,
+      }));
+      const meta = {
+        yearhakgi,
+        crawledAt: new Date().toISOString(),
+        matchedMajors: result.matchedMajors,
+        classCount: result.classes.length,
+        slotCount: cacheEntries.length,
+        searchName: name,
+      };
+      db.prepare(`
+        UPDATE members
+           SET timetable_cache = ?, timetable_source = 'hansung_oc',
+               timetable_fetched_at = CURRENT_TIMESTAMP, timetable_meta = ?
+         WHERE id = ?
+      `).run(JSON.stringify(cacheEntries), JSON.stringify(meta), memberId);
+      req.session.lastFacultyAutoCrawl = {
+        committeeId: committee.id, memberId, name,
+        yearhakgi, matchedMajors: result.matchedMajors,
+        classCount: result.classes.length, slotCount: cacheEntries.length,
+      };
+    } catch (err) {
+      req.session.lastFacultyAutoCrawl = {
+        committeeId: committee.id, memberId, name, yearhakgi,
+        error: err.message,
+      };
+    }
+  }
+
+  const newMember = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
+  const openMeetings = db.prepare(`
+    SELECT * FROM meetings WHERE committee_id = ? AND status = 'scheduling'
+  `).all(committee.id);
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const issued = [];
+  for (const mt of openMeetings) {
+    const meetingFull = db.prepare(`
+      SELECT mt.*, c.name AS committee_name FROM meetings mt
+      JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ?
+    `).get(mt.id);
+    const token = uuidv4();
+    db.prepare(`INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'availability')`)
+      .run(memberId, mt.id, token);
+    try { await notify.sendAvailabilityRequest(meetingFull, newMember, token, baseUrl); } catch (e) {}
+
+    const slots = db.prepare('SELECT * FROM meeting_slots WHERE meeting_id = ?').all(mt.id);
+    if (slots.length > 0) {
+      const { getMemberTimetable } = require('../services/scheduler');
+      const { busyAt } = require('../services/timetable');
+      const tt = await getMemberTimetable(newMember, { referenceDate: new Date(mt.created_at) });
+      if (tt && tt.length > 0) {
+        const ins = db.prepare(`
+          INSERT OR IGNORE INTO slot_responses (slot_id, member_id, response, auto_filled, note)
+          VALUES (?, ?, ?, 1, ?)
+        `);
+        for (const sl of slots) {
+          const conflict = busyAt(tt, sl.start_time, sl.end_time);
+          if (conflict) {
+            ins.run(sl.id, memberId, 'unavailable', `시간표 자동 인식: ${conflict.title} (${conflict.start}~${conflict.end})`);
+          }
+        }
+      }
+    }
+    issued.push({ meetingId: mt.id, title: mt.title });
+  }
+  if (issued.length > 0) {
+    req.session.lastMemberAddIssue = { committeeId: committee.id, memberName: name, meetings: issued };
+  }
+
+  res.redirect(`/admin/committees/${committee.id}`);
 });
 
 router.post('/committees/:id/members/:memberId/delete', (req, res) => {
@@ -279,6 +384,53 @@ router.post('/committees/:id/timetable-sync', async (req, res) => {
   res.redirect(`/admin/committees/${committee.id}?sync=done`);
 });
 
+router.get('/settings/smtp', (req, res) => {
+  const cfg = mailer.getSmtpConfig();
+  res.render('admin/smtp_settings', {
+    cfg,
+    configured: mailer.isSmtpConfigured(),
+    flash: req.session.smtpFlash || null,
+  });
+  delete req.session.smtpFlash;
+});
+
+router.post('/settings/smtp/save', (req, res) => {
+  mailer.setSmtpConfig({
+    host: req.body.host || '',
+    port: req.body.port || '587',
+    user: req.body.user || '',
+    pass: req.body.pass || '',
+    from: req.body.from || req.body.user || '',
+    secure: req.body.secure === 'on' ? 'true' : 'false',
+  });
+  req.session.smtpFlash = { kind: 'ok', message: 'SMTP 설정 저장됨' };
+  res.redirect('/admin/settings/smtp');
+});
+
+router.post('/settings/smtp/test', async (req, res) => {
+  const verify = await mailer.verifySmtp();
+  if (!verify.ok) {
+    req.session.smtpFlash = { kind: 'err', message: `SMTP 검증 실패: ${verify.reason} ${verify.error || ''}` };
+    return res.redirect('/admin/settings/smtp');
+  }
+  const to = (req.body.test_to || '').trim();
+  if (!to) {
+    req.session.smtpFlash = { kind: 'ok', message: 'SMTP 연결 OK (테스트 수신자 없음)' };
+    return res.redirect('/admin/settings/smtp');
+  }
+  const result = await mailer.sendMail({
+    to,
+    subject: '[테스트] 위원회 자동화 플랫폼 SMTP 연결 확인',
+    text: `이 메일은 SMTP 설정 테스트입니다.\n\n발송 시각: ${new Date().toLocaleString('ko-KR')}\n\n이 메일이 잘 도착했다면 SMTP 설정이 정상입니다.`,
+  });
+  if (result.ok) {
+    req.session.smtpFlash = { kind: 'ok', message: `테스트 메일 발송 OK → ${to}` };
+  } else {
+    req.session.smtpFlash = { kind: 'err', message: `발송 실패: ${result.reason} ${result.error || ''}` };
+  }
+  res.redirect('/admin/settings/smtp');
+});
+
 router.get('/timetables/:filename', (req, res) => {
   const safeName = path.basename(req.params.filename);
   const fp = path.join(UPLOAD_DIR, safeName);
@@ -315,10 +467,12 @@ router.post('/committees/:id/meetings', async (req, res) => {
   const meetingId = info.lastInsertRowid;
 
   const members = db.prepare('SELECT * FROM members WHERE committee_id = ?').all(committeeId);
+  const meetingCreatedAt = new Date();
   const suggested = await suggestTopSlots(members, {
     durationMinutes: parseInt(duration_minutes) || 60,
     constraints,
     topN: 6,
+    referenceDate: meetingCreatedAt,
   });
   const insertSlot = db.prepare('INSERT INTO meeting_slots (meeting_id, start_time, end_time, suggested_score) VALUES (?, ?, ?, ?)');
   const insertResp = db.prepare(`
@@ -331,13 +485,15 @@ router.post('/committees/:id/meetings', async (req, res) => {
     slotIds.push(r.lastInsertRowid);
   }
 
+  const { getMemberTimetable } = require('../services/scheduler');
+  const { busyAt } = require('../services/timetable');
   for (const m of members) {
-    if (m.type !== 'internal' || !m.sabun) continue;
-    const tt = await getTimetable(m.sabun);
-    for (const slot of suggested) {
-      const slotIdx = suggested.indexOf(slot);
-      const slotId = slotIds[slotIdx];
-      const conflict = require('../services/timetable').busyAt(tt.data, slot.start, slot.end);
+    const tt = await getMemberTimetable(m, { referenceDate: meetingCreatedAt });
+    if (!tt || tt.length === 0) continue;
+    for (let i = 0; i < suggested.length; i++) {
+      const slot = suggested[i];
+      const slotId = slotIds[i];
+      const conflict = busyAt(tt, slot.start, slot.end);
       if (conflict) {
         insertResp.run(slotId, m.id, 'unavailable', `시간표 자동 인식: ${conflict.title} (${conflict.start}~${conflict.end})`);
       }
@@ -355,7 +511,7 @@ router.post('/committees/:id/meetings', async (req, res) => {
   for (const m of members) {
     const token = uuidv4();
     insertToken.run(m.id, meetingId, token);
-    notify.sendAvailabilityRequest(meeting, m, token, baseUrl);
+    await notify.sendAvailabilityRequest(meeting, m, token, baseUrl);
   }
 
   res.redirect(`/admin/meetings/${meetingId}`);
@@ -403,10 +559,12 @@ router.get('/meetings/:id', (req, res) => {
     meeting, slots, members, responses, tokens, signatures, notifications,
     confirmedSlot, slotMatrix, baseUrl: `${req.protocol}://${req.get('host')}`,
     getTimetableImageUrl, progress,
+    actionFlag: req.query.action || null,
+    smtpConfigured: mailer.isSmtpConfigured(),
   });
 });
 
-router.post('/meetings/:id/remind', (req, res) => {
+router.post('/meetings/:id/remind', async (req, res) => {
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name FROM meetings mt
     JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ? AND c.operator_id = ?
@@ -424,13 +582,14 @@ router.post('/meetings/:id/remind', (req, res) => {
     const token = db.prepare(`
       SELECT token FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = 'availability'
     `).get(meeting.id, m.id);
-    if (token) notify.sendReminder(meeting, m, token.token, baseUrl);
+    if (token) await notify.sendReminder(meeting, m, token.token, baseUrl);
   }
-  res.redirect(`/admin/meetings/${meeting.id}`);
+  res.redirect(`/admin/meetings/${meeting.id}?action=remind-sent`);
 });
 
-router.post('/meetings/:id/confirm', (req, res) => {
+router.post('/meetings/:id/confirm', async (req, res) => {
   const { slot_id } = req.body;
+  const force = req.body.force === '1';
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name FROM meetings mt
     JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ? AND c.operator_id = ?
@@ -442,9 +601,9 @@ router.post('/meetings/:id/confirm', (req, res) => {
     .run(slot.id, meeting.id);
   const members = db.prepare('SELECT * FROM members WHERE committee_id = ?').all(meeting.committee_id);
   for (const m of members) {
-    notify.sendMeetingConfirmed(meeting, m, slot);
+    await notify.sendMeetingConfirmed(meeting, m, slot);
   }
-  res.redirect(`/admin/meetings/${meeting.id}`);
+  res.redirect(`/admin/meetings/${meeting.id}?action=${force ? 'force-confirmed' : 'confirmed'}`);
 });
 
 router.post('/meetings/:id/minutes', (req, res) => {
@@ -458,7 +617,7 @@ router.post('/meetings/:id/minutes', (req, res) => {
   res.redirect(`/admin/meetings/${meeting.id}`);
 });
 
-router.post('/meetings/:id/request-signatures', (req, res) => {
+router.post('/meetings/:id/request-signatures', async (req, res) => {
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name FROM meetings mt
     JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ? AND c.operator_id = ?
@@ -480,7 +639,7 @@ router.post('/meetings/:id/request-signatures', (req, res) => {
       token = uuidv4();
       insertToken.run(m.id, meeting.id, token);
     }
-    notify.sendSignatureRequest(meeting, m, token, baseUrl);
+    await notify.sendSignatureRequest(meeting, m, token, baseUrl);
   }
   res.redirect(`/admin/meetings/${meeting.id}`);
 });

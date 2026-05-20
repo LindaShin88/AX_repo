@@ -63,26 +63,27 @@ async function seed() {
   `);
 
   const c1Members = [
-    { name: '신영헌', email: 'shin@hansung.ac.kr', phone: '010-1111-1111', type: 'internal', sabun: '110579', role: '위원장', affiliation: '컴퓨터공학부' },
-    { name: '김교수', email: 'kim@hansung.ac.kr', phone: '010-2222-2222', type: 'internal', sabun: '110850', role: '위원', affiliation: '경영학부' },
-    { name: '이교수', email: 'lee@hansung.ac.kr', phone: '010-3333-3333', type: 'internal', sabun: '110814', role: '위원', affiliation: '디자인학부' },
+    { name: '신영헌', email: 'shin@hansung.ac.kr', phone: '010-1111-1111', type: 'faculty', sabun: '110579', role: '위원장', affiliation: '컴퓨터공학부' },
+    { name: '김교수', email: 'kim@hansung.ac.kr', phone: '010-2222-2222', type: 'faculty', sabun: '110850', role: '위원', affiliation: '경영학부' },
+    { name: '이교수', email: 'lee@hansung.ac.kr', phone: '010-3333-3333', type: 'faculty', sabun: '110814', role: '위원', affiliation: '디자인학부' },
     { name: '박외부', email: 'park.ext@example.com', phone: '010-4444-4444', type: 'external', sabun: null, role: '외부전문가', affiliation: '한국교육개발원' },
     { name: '최외부', email: 'choi.ext@example.com', phone: '010-5555-5555', type: 'external', sabun: null, role: '외부위원', affiliation: '서울교육청' },
   ];
   c1Members.forEach(m => insertMember.run(cIds[0], m.name, m.email, m.phone, m.type, m.sabun, m.role, m.affiliation));
 
   const c2Members = [
-    { name: '신영헌', email: 'shin@hansung.ac.kr', phone: '010-1111-1111', type: 'internal', sabun: '110579', role: '위원', affiliation: '컴퓨터공학부' },
-    { name: '정교수', email: 'jung@hansung.ac.kr', phone: '010-6666-6666', type: 'internal', sabun: '110850', role: '위원장', affiliation: '경영학부' },
-    { name: '윤학생처', email: 'yoon@hansung.ac.kr', phone: '010-7777-7777', type: 'internal', sabun: null, role: '학생처장', affiliation: '학생처' },
+    { name: '신영헌', email: 'shin@hansung.ac.kr', phone: '010-1111-1111', type: 'faculty', sabun: '110579', role: '위원', affiliation: '컴퓨터공학부' },
+    { name: '정교수', email: 'jung@hansung.ac.kr', phone: '010-6666-6666', type: 'faculty', sabun: '110850', role: '위원장', affiliation: '경영학부' },
+    { name: '윤학생처', email: 'yoon@hansung.ac.kr', phone: '010-7777-7777', type: 'staff', sabun: null, role: '학생처장', affiliation: '학생처' },
     { name: '강복지', email: 'kang.ext@example.com', phone: '010-8888-8888', type: 'external', sabun: null, role: '외부전문가', affiliation: '청소년재단' },
   ];
   c2Members.forEach(m => insertMember.run(cIds[1], m.name, m.email, m.phone, m.type, m.sabun, m.role, m.affiliation));
 
   const c3Members = [
-    { name: '이교수', email: 'lee@hansung.ac.kr', phone: '010-3333-3333', type: 'internal', sabun: '110814', role: '위원장', affiliation: '디자인학부' },
-    { name: '신영헌', email: 'shin@hansung.ac.kr', phone: '010-1111-1111', type: 'internal', sabun: '110579', role: '위원', affiliation: '컴퓨터공학부' },
-    { name: '김교수', email: 'kim@hansung.ac.kr', phone: '010-2222-2222', type: 'internal', sabun: '110850', role: '위원', affiliation: '경영학부' },
+    { name: '이교수', email: 'lee@hansung.ac.kr', phone: '010-3333-3333', type: 'faculty', sabun: '110814', role: '위원장', affiliation: '디자인학부' },
+    { name: '신영헌', email: 'shin@hansung.ac.kr', phone: '010-1111-1111', type: 'faculty', sabun: '110579', role: '위원', affiliation: '컴퓨터공학부' },
+    { name: '김교수', email: 'kim@hansung.ac.kr', phone: '010-2222-2222', type: 'faculty', sabun: '110850', role: '위원', affiliation: '경영학부' },
+    { name: '윤학생', email: 'student.yoon@hansung.ac.kr', phone: '010-1212-1212', type: 'student', sabun: null, role: '학생대표', affiliation: '총학생회' },
     { name: '한입학', email: 'han.ext@example.com', phone: '010-9999-9999', type: 'external', sabun: null, role: '외부사정관', affiliation: '한국대학교육협의회' },
     { name: '오평가', email: 'oh.ext@example.com', phone: '010-1010-1010', type: 'external', sabun: null, role: '외부평가위원', affiliation: '교육부' },
     { name: '서고교', email: 'seo.ext@example.com', phone: '010-2020-2020', type: 'external', sabun: null, role: '고교 진학지도', affiliation: '서울고등학교' },

@@ -12,7 +12,7 @@
         <% } else { %>
           <a href="/admin" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath === '/' ? 'bg-slate-100 font-semibold' : '' %>">대시보드</a>
           <a href="/admin/insights" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/insights') ? 'bg-slate-100 font-semibold' : '' %>">📊 효과 분석</a>
-          <a href="/admin/hansung-cookie" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/hansung-cookie') ? 'bg-slate-100 font-semibold' : '' %>">🔑 한성대 쿠키</a>
+          <a href="/admin/settings/smtp" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/settings/smtp') ? 'bg-slate-100 font-semibold' : '' %>">📧 메일 설정</a>
           <a href="/admin/notifications" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/notifications') ? 'bg-slate-100 font-semibold' : '' %>">알림 로그</a>
         <% } %>
       </div>

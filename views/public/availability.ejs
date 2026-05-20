@@ -24,7 +24,7 @@
   <form method="POST" action="/avail/<%= token.token %>" class="bg-white rounded-2xl shadow-sm border p-6">
     <h3 class="font-bold text-slate-900 mb-1">아래 후보 일정 중 가능 여부를 표시해주세요</h3>
     <p class="text-xs text-slate-500 mb-4">
-      <% if (token.member_type === 'internal' && token.sabun) { %>
+      <% if (token.member_type === 'faculty') { %>
       ※ 한성대 시간표 기준으로 강의 시간과 겹치는 항목은 자동으로 '불가능'으로 표시되어 있습니다. 필요시 수정 가능합니다.
       <% } else { %>
       ※ 가능한 시간을 모두 선택해주세요.

@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS members (
     name TEXT NOT NULL,
     email TEXT,
     phone TEXT,
-    type TEXT NOT NULL CHECK(type IN ('internal','external')),
+    type TEXT NOT NULL CHECK(type IN ('faculty','staff','student','external')),
     sabun TEXT,
     role TEXT,
     affiliation TEXT,
@@ -131,6 +131,12 @@ CREATE TABLE IF NOT EXISTS notifications (
     FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_members_committee ON members(committee_id);
 CREATE INDEX IF NOT EXISTS idx_meetings_committee ON meetings(committee_id);
 CREATE INDEX IF NOT EXISTS idx_slots_meeting ON meeting_slots(meeting_id);
@@ -159,5 +165,48 @@ ensureColumn('operators', 'status', "TEXT DEFAULT 'active'");
 ensureColumn('operators', 'approved_by', 'INTEGER');
 ensureColumn('operators', 'approved_at', 'DATETIME');
 ensureColumn('operators', 'rejection_reason', 'TEXT');
+
+ensureColumn('members', 'timetable_meta', 'TEXT');
+
+function migrateMemberTypes() {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='members'").get();
+  if (!row || !row.sql.includes("'internal'")) return;
+  db.exec(`
+    BEGIN;
+    CREATE TABLE members_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      committee_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
+      type TEXT NOT NULL CHECK(type IN ('faculty','staff','student','external')),
+      sabun TEXT,
+      role TEXT,
+      affiliation TEXT,
+      timetable_cache TEXT,
+      timetable_fetched_at DATETIME,
+      timetable_image_path TEXT,
+      timetable_source TEXT,
+      timetable_meta TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (committee_id) REFERENCES committees(id) ON DELETE CASCADE
+    );
+    INSERT INTO members_new (id, committee_id, name, email, phone, type, sabun, role, affiliation,
+                             timetable_cache, timetable_fetched_at, timetable_image_path, timetable_source, timetable_meta, created_at)
+    SELECT id, committee_id, name, email, phone,
+           CASE WHEN type = 'internal' AND sabun IS NOT NULL AND sabun != '' THEN 'faculty'
+                WHEN type = 'internal' THEN 'staff'
+                ELSE 'external' END,
+           sabun, role, affiliation,
+           timetable_cache, timetable_fetched_at, timetable_image_path, timetable_source, timetable_meta, created_at
+    FROM members;
+    DROP TABLE members;
+    ALTER TABLE members_new RENAME TO members;
+    CREATE INDEX IF NOT EXISTS idx_members_committee ON members(committee_id);
+    COMMIT;
+  `);
+  console.log('[db migration] members.type CHECK constraint relaxed to (faculty/staff/student/external).');
+}
+migrateMemberTypes();
 
 module.exports = db;

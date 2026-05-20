@@ -1,4 +1,5 @@
 const { getTimetable, busyAt } = require('./timetable');
+const hansungOc = require('./hansung_oc');
 const db = require('../database');
 
 function fmtLocal(d) {
@@ -52,30 +53,76 @@ function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
   return candidates;
 }
 
-async function getMemberTimetable(member) {
+function readCachedTimetable(member) {
   if (member.timetable_cache) {
     try {
       const parsed = JSON.parse(member.timetable_cache);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     } catch (e) {}
   }
-  const fresh = db.prepare('SELECT timetable_cache FROM members WHERE id = ?').get(member.id);
-  if (fresh && fresh.timetable_cache) {
-    try {
-      const parsed = JSON.parse(fresh.timetable_cache);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    } catch (e) {}
+  return null;
+}
+
+function readCachedMeta(member) {
+  if (member.timetable_meta) {
+    try { return JSON.parse(member.timetable_meta); } catch (e) {}
   }
-  if (member.type === 'internal' && member.sabun) {
-    const tt = await getTimetable(member.sabun);
-    return tt.data || [];
+  return null;
+}
+
+async function getMemberTimetable(member, opts = {}) {
+  const refDate = opts.referenceDate ? new Date(opts.referenceDate) : new Date();
+  const targetYearHakgi = hansungOc.dateToYearHakgi(refDate);
+
+  if (member.type === 'faculty') {
+    const meta = readCachedMeta(member);
+    const cached = readCachedTimetable(member);
+    if (cached && meta && meta.yearhakgi === targetYearHakgi) return cached;
+
+    try {
+      const result = await hansungOc.findProfessorClasses(targetYearHakgi, member.name, { concurrency: 6 });
+      const cacheEntries = result.timetable.map(e => ({
+        day: e.day, start: e.start, end: e.end, title: e.title,
+        location: e.location, bunban: e.bunban, major: e.major, majorCode: e.majorCode,
+      }));
+      const newMeta = {
+        yearhakgi: targetYearHakgi,
+        crawledAt: new Date().toISOString(),
+        matchedMajors: result.matchedMajors,
+        classCount: result.classes.length,
+        slotCount: cacheEntries.length,
+        searchName: member.name,
+      };
+      db.prepare(`
+        UPDATE members SET timetable_cache = ?, timetable_source = 'hansung_oc',
+                           timetable_fetched_at = CURRENT_TIMESTAMP, timetable_meta = ?
+         WHERE id = ?
+      `).run(JSON.stringify(cacheEntries), JSON.stringify(newMeta), member.id);
+      return cacheEntries;
+    } catch (e) {
+      return cached || [];
+    }
+  }
+
+  const cached = readCachedTimetable(member);
+  if (cached) return cached;
+  const fresh = db.prepare('SELECT timetable_cache FROM members WHERE id = ?').get(member.id);
+  if (fresh) {
+    const parsed = readCachedTimetable(fresh);
+    if (parsed) return parsed;
+  }
+  if (member.sabun) {
+    try {
+      const tt = await getTimetable(member.sabun);
+      return tt.data || [];
+    } catch (e) {}
   }
   return [];
 }
 
-async function scoreSlotsAgainstMembers(slots, members) {
+async function scoreSlotsAgainstMembers(slots, members, opts = {}) {
   const memberTimetables = await Promise.all(
-    members.map(async (m) => ({ member: m, timetable: await getMemberTimetable(m) }))
+    members.map(async (m) => ({ member: m, timetable: await getMemberTimetable(m, opts) }))
   );
   return slots.map((s) => {
     let conflicts = 0;
@@ -93,14 +140,12 @@ async function scoreSlotsAgainstMembers(slots, members) {
   });
 }
 
-module.exports.getMemberTimetable = getMemberTimetable;
-
 async function suggestTopSlots(members, opts = {}) {
   const topN = opts.topN || 6;
   const duration = opts.durationMinutes || 60;
   const candidates = generateCandidatesFromConstraints(opts.constraints, duration);
   if (candidates.length === 0) return [];
-  const scored = await scoreSlotsAgainstMembers(candidates, members);
+  const scored = await scoreSlotsAgainstMembers(candidates, members, { referenceDate: opts.referenceDate });
   scored.sort((a, b) => b.score - a.score || a.start.localeCompare(b.start));
   const top = scored.slice(0, Math.min(topN, scored.length));
   top.sort((a, b) => a.start.localeCompare(b.start));
@@ -111,6 +156,7 @@ module.exports = {
   generateCandidatesFromConstraints,
   scoreSlotsAgainstMembers,
   suggestTopSlots,
+  getMemberTimetable,
   defaultConstraints,
   parseConstraints,
 };
