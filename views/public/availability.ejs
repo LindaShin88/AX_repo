@@ -15,21 +15,36 @@
     </div>
     <h1 class="text-xl font-bold text-slate-900"><%= token.committee_name %></h1>
     <h2 class="text-2xl font-bold text-slate-900 mt-1"><%= token.title %></h2>
-    <% if (token.description) { %><p class="text-sm text-slate-600 mt-2"><%= token.description %></p><% } %>
-    <div class="mt-3 text-sm text-slate-700">
-      <strong><%= token.member_name %></strong><% if (token.role) { %> · <%= token.role %><% } %><% if (token.affiliation) { %> · <%= token.affiliation %><% } %> 님께
+
+    <div class="mt-3 space-y-1.5 text-sm">
+      <% if (token.location) { %>
+      <div class="flex gap-2">
+        <span class="text-slate-500 w-16 shrink-0">📍 장소</span>
+        <span class="text-slate-900"><%= token.location %></span>
+      </div>
+      <% } %>
+      <% if (token.duration_minutes) { %>
+      <div class="flex gap-2">
+        <span class="text-slate-500 w-16 shrink-0">⏱ 소요</span>
+        <span class="text-slate-900"><%= token.duration_minutes %>분</span>
+      </div>
+      <% } %>
+      <% if (token.description) { %>
+      <div class="flex gap-2">
+        <span class="text-slate-500 w-16 shrink-0">📋 안건</span>
+        <span class="text-slate-900 whitespace-pre-wrap"><%= token.description %></span>
+      </div>
+      <% } %>
+    </div>
+
+    <div class="mt-4 pt-3 border-t text-sm text-slate-700">
+      <strong><%= token.member_name %></strong><% if (token.role) { %> · <%= token.role %><% } %><% if (token.affiliation) { %> · <%= token.affiliation %><% } %> 위원님께
     </div>
   </div>
 
   <form method="POST" action="/avail/<%= token.token %>" class="bg-white rounded-2xl shadow-sm border p-6">
     <h3 class="font-bold text-slate-900 mb-1">아래 후보 일정 중 가능 여부를 표시해주세요</h3>
-    <p class="text-xs text-slate-500 mb-4">
-      <% if (token.member_type === 'faculty') { %>
-      ※ 한성대 시간표 기준으로 강의 시간과 겹치는 항목은 자동으로 '불가능'으로 표시되어 있습니다. 필요시 수정 가능합니다.
-      <% } else { %>
-      ※ 가능한 시간을 모두 선택해주세요.
-      <% } %>
-    </p>
+    <p class="text-xs text-slate-500 mb-4">※ 가능한 시간을 모두 선택해주세요.</p>
 
     <div class="space-y-3">
       <% slots.forEach(slot => { %>

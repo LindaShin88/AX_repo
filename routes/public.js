@@ -1,6 +1,8 @@
 const express = require('express');
 const db = require('../database');
 const { getTimetable, busyAt, getTimetableImageUrl } = require('../services/timetable');
+const notify = require('../services/notify');
+const mailer = require('../services/mailer');
 
 const router = express.Router();
 
@@ -23,7 +25,7 @@ router.get('/avail/:token', (req, res) => {
   res.render('public/availability', { token, slots, responses });
 });
 
-router.post('/avail/:token', (req, res) => {
+router.post('/avail/:token', async (req, res) => {
   const token = db.prepare(`
     SELECT t.*, mt.id AS meeting_id FROM member_tokens t
     JOIN meetings mt ON mt.id = t.meeting_id
@@ -47,9 +49,16 @@ router.post('/avail/:token', (req, res) => {
     upsert.run(slot.id, token.member_id, value, req.body[`note_${slot.id}`] || null);
   }
   db.prepare('UPDATE member_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(token.id);
+
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+  let autoResult = null;
+  try { autoResult = await notify.maybeAutoConfirmMeeting(token.meeting_id, baseUrl); } catch (e) {}
+
   res.render('public/thanks', {
     title: '응답이 등록되었습니다',
-    message: '가능 일정 응답이 정상 제출되었습니다. 감사합니다.',
+    message: autoResult && autoResult.kind === 'auto-confirmed'
+      ? '모든 위원의 응답이 완료되어 회의 일정이 자동 확정되었습니다. 확정 안내 메일을 곧 받으실 거예요.'
+      : '가능 일정 응답이 정상 제출되었습니다. 감사합니다.',
   });
 });
 

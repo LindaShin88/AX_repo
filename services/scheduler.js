@@ -28,6 +28,16 @@ function defaultConstraints() {
   };
 }
 
+function normalizeTimeEntry(x) {
+  if (typeof x === 'number') return { h: Math.floor(x), m: Math.round((x - Math.floor(x)) * 60) };
+  if (x && typeof x === 'object' && typeof x.h === 'number') return { h: x.h, m: x.m || 0 };
+  if (typeof x === 'string') {
+    const m = x.match(/^(\d{1,2})(?::(\d{2}))?$/);
+    if (m) return { h: parseInt(m[1]), m: m[2] ? parseInt(m[2]) : 0 };
+  }
+  return null;
+}
+
 function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
   const c = { ...defaultConstraints(), ...parseConstraints(constraintsRaw) };
   const start = new Date(c.window.start + 'T00:00:00');
@@ -40,12 +50,13 @@ function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
     const hasOverride = c.dateOverrides && c.dateOverrides[dateStr];
     const dow = d.getDay();
     if (!hasOverride && (dow === 0 || dow === 6)) continue;
-    const allowedHours = hasOverride
+    const rawHours = hasOverride
       ? c.dateOverrides[dateStr]
       : [...(c.morningHours || []), ...(c.afternoonHours || [])];
-    for (const h of allowedHours) {
+    const allowedTimes = rawHours.map(normalizeTimeEntry).filter(Boolean);
+    for (const t of allowedTimes) {
       const slotStart = new Date(d);
-      slotStart.setHours(h, 0, 0, 0);
+      slotStart.setHours(t.h, t.m, 0, 0);
       const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
       candidates.push({ start: fmtLocal(slotStart), end: fmtLocal(slotEnd) });
     }
@@ -53,11 +64,11 @@ function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
   return candidates;
 }
 
-function readCachedTimetable(member) {
+function readCachedTimetableArray(member) {
   if (member.timetable_cache) {
     try {
       const parsed = JSON.parse(member.timetable_cache);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     } catch (e) {}
   }
   return null;
@@ -76,8 +87,10 @@ async function getMemberTimetable(member, opts = {}) {
 
   if (member.type === 'faculty') {
     const meta = readCachedMeta(member);
-    const cached = readCachedTimetable(member);
-    if (cached && meta && meta.yearhakgi === targetYearHakgi) return cached;
+    const cachedArr = readCachedTimetableArray(member);
+    if (meta && meta.yearhakgi === targetYearHakgi && cachedArr !== null) {
+      return cachedArr;
+    }
 
     try {
       const result = await hansungOc.findProfessorClasses(targetYearHakgi, member.name, { concurrency: 6 });
@@ -100,17 +113,12 @@ async function getMemberTimetable(member, opts = {}) {
       `).run(JSON.stringify(cacheEntries), JSON.stringify(newMeta), member.id);
       return cacheEntries;
     } catch (e) {
-      return cached || [];
+      return cachedArr || [];
     }
   }
 
-  const cached = readCachedTimetable(member);
-  if (cached) return cached;
-  const fresh = db.prepare('SELECT timetable_cache FROM members WHERE id = ?').get(member.id);
-  if (fresh) {
-    const parsed = readCachedTimetable(fresh);
-    if (parsed) return parsed;
-  }
+  const cached = readCachedTimetableArray(member);
+  if (cached && cached.length > 0) return cached;
   if (member.sabun) {
     try {
       const tt = await getTimetable(member.sabun);
@@ -121,9 +129,8 @@ async function getMemberTimetable(member, opts = {}) {
 }
 
 async function scoreSlotsAgainstMembers(slots, members, opts = {}) {
-  const memberTimetables = await Promise.all(
-    members.map(async (m) => ({ member: m, timetable: await getMemberTimetable(m, opts) }))
-  );
+  const memberTimetables = opts.precomputedTimetables
+    || await Promise.all(members.map(async (m) => ({ member: m, timetable: await getMemberTimetable(m, opts) })));
   return slots.map((s) => {
     let conflicts = 0;
     let unknown = 0;
@@ -144,12 +151,52 @@ async function suggestTopSlots(members, opts = {}) {
   const topN = opts.topN || 6;
   const duration = opts.durationMinutes || 60;
   const candidates = generateCandidatesFromConstraints(opts.constraints, duration);
-  if (candidates.length === 0) return [];
-  const scored = await scoreSlotsAgainstMembers(candidates, members, { referenceDate: opts.referenceDate });
+  if (candidates.length === 0) return { slots: [], debug: { totalCandidates: 0, facultyFiltered: 0, fallback: false } };
+
+  const allTimetables = await Promise.all(
+    members.map(async (m) => ({ member: m, timetable: await getMemberTimetable(m, { referenceDate: opts.referenceDate }) }))
+  );
+  const facultyTimetables = allTimetables.filter(x => x.member.type === 'faculty');
+
+  const conflictFree = candidates.filter(c => {
+    for (const { timetable } of facultyTimetables) {
+      if (timetable && timetable.length > 0 && busyAt(timetable, c.start, c.end)) return false;
+    }
+    return true;
+  });
+
+  let workingSet = conflictFree;
+  let fallback = false;
+  if (workingSet.length === 0) {
+    workingSet = candidates;
+    fallback = true;
+  }
+
+  const scored = await scoreSlotsAgainstMembers(workingSet, members, { referenceDate: opts.referenceDate, precomputedTimetables: allTimetables });
   scored.sort((a, b) => b.score - a.score || a.start.localeCompare(b.start));
-  const top = scored.slice(0, Math.min(topN, scored.length));
-  top.sort((a, b) => a.start.localeCompare(b.start));
-  return top;
+
+  const byDate = new Map();
+  for (const s of scored) {
+    const date = s.start.slice(0, 10);
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push(s);
+  }
+  const dates = [...byDate.keys()];
+  const picked = [];
+  let perDate = 1;
+  while (picked.length < topN && dates.some(d => byDate.get(d).length >= perDate)) {
+    for (const d of dates) {
+      if (picked.length >= topN) break;
+      const list = byDate.get(d);
+      if (list.length >= perDate) picked.push(list[perDate - 1]);
+    }
+    perDate += 1;
+  }
+  picked.sort((a, b) => a.start.localeCompare(b.start));
+  return {
+    slots: picked.slice(0, topN),
+    debug: { totalCandidates: candidates.length, conflictFree: conflictFree.length, facultyFiltered: candidates.length - conflictFree.length, fallback },
+  };
 }
 
 module.exports = {

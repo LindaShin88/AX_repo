@@ -113,8 +113,8 @@
 
       <div class="mt-4 border-t pt-4">
         <div class="text-sm font-semibold text-slate-700 mb-1">+ 위원 추가</div>
-        <div class="text-xs text-slate-500 mb-3">교원으로 추가하면 한성대 OC 시간표에서 동일 이름 강의를 자동으로 가져옵니다 (1-2초 소요).</div>
-        <form method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3">
+        <div class="text-xs text-slate-500 mb-3">교원은 이름 입력 후 <strong>🔎 한성대에서 자동 채우기</strong> 클릭 → 이메일/소속/사번 자동 입력 (동명이인이면 선택 화면)</div>
+        <form id="add-member-form" method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3">
           <div class="col-span-2 grid grid-cols-4 gap-2">
             <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-400">
               <input type="radio" name="type" value="faculty" checked> <span class="text-xs">교원</span>
@@ -129,14 +129,89 @@
               <input type="radio" name="type" value="external"> <span class="text-xs">외부위원</span>
             </label>
           </div>
-          <input name="name" placeholder="이름 *" required class="border rounded-lg px-3 py-2 text-sm">
-          <input name="email" type="email" placeholder="이메일 *" required class="border rounded-lg px-3 py-2 text-sm">
+          <div class="col-span-2 flex gap-2">
+            <input id="add-name" name="name" placeholder="이름 *" required class="flex-1 border rounded-lg px-3 py-2 text-sm">
+            <button type="button" id="lookup-btn" onclick="lookupProfessor()" class="bg-sky-600 hover:bg-sky-700 text-white rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap">🔎 한성대 자동채우기</button>
+          </div>
+          <input id="add-email" name="email" type="email" placeholder="이메일 *" required class="border rounded-lg px-3 py-2 text-sm">
           <input name="role" placeholder="역할 (선택)" class="border rounded-lg px-3 py-2 text-sm">
-          <input name="affiliation" placeholder="소속 (선택)" class="border rounded-lg px-3 py-2 text-sm">
-          <input name="sabun" placeholder="사번 (선택)" class="border rounded-lg px-3 py-2 text-sm">
-          <input name="phone" placeholder="전화번호 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="add-affiliation" name="affiliation" placeholder="소속 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="add-sabun" name="sabun" placeholder="사번 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="add-phone" name="phone" placeholder="전화번호 (선택)" class="border rounded-lg px-3 py-2 text-sm">
           <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가 (교원은 시간표 자동 연결)</button>
         </form>
+
+        <div id="lookup-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeLookupModal()"></div>
+        <div id="lookup-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-lg bg-white rounded-2xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto">
+          <div class="flex items-center justify-between mb-3">
+            <h3 id="lookup-title" class="font-bold text-slate-900">🔎 한성대 디렉토리 검색</h3>
+            <button type="button" onclick="closeLookupModal()" class="text-slate-400 hover:text-slate-700 text-xl">×</button>
+          </div>
+          <div id="lookup-body"></div>
+        </div>
+
+        <script>
+          async function lookupProfessor() {
+            const name = document.getElementById('add-name').value.trim();
+            if (!name) { alert('이름을 먼저 입력해주세요'); return; }
+            const btn = document.getElementById('lookup-btn');
+            btn.disabled = true; btn.innerText = '⏳ 검색 중...';
+            try {
+              const resp = await fetch('/admin/lookup-professor?name=' + encodeURIComponent(name));
+              const data = await resp.json();
+              showLookupResult(name, data);
+            } catch (e) { alert('검색 실패: ' + e.message); }
+            finally { btn.disabled = false; btn.innerText = '🔎 한성대 자동채우기'; }
+          }
+
+          function fillFromMatch(m) {
+            if (m.email) document.getElementById('add-email').value = m.email;
+            if (m.sabun) document.getElementById('add-sabun').value = m.sabun;
+            if (m.affiliations && m.affiliations.length) document.getElementById('add-affiliation').value = m.affiliations.join(' · ');
+            if (m.phone) document.getElementById('add-phone').value = m.phone;
+            closeLookupModal();
+          }
+
+          function showLookupResult(name, data) {
+            const body = document.getElementById('lookup-body');
+            const title = document.getElementById('lookup-title');
+            if (!data.matches || data.matches.length === 0) {
+              title.innerText = '🔎 검색 결과 없음';
+              body.innerHTML = `<p class="text-sm text-slate-600">한성대 디렉토리에서 "<strong>${name}</strong>" 이름으로 교원을 찾지 못했어요.</p><p class="text-xs text-slate-400 mt-2">이메일을 직접 입력해주세요.</p><div class="mt-3 text-right"><button onclick="closeLookupModal()" class="border rounded-lg px-4 py-2 text-sm">닫기</button></div>`;
+            } else if (data.matches.length === 1) {
+              const m = data.matches[0];
+              fillFromMatch(m);
+              const affLines = (m.affiliations || []).map(a => '   ' + a).join('\n');
+              alert(`✅ ${m.name} 교원 정보 자동 입력됨\n· 이메일: ${m.email || '(공개되지 않음)'}\n· 소속:\n${affLines}\n· 사번: ${m.sabun}`);
+              return;
+            } else {
+              title.innerText = `🔀 동명이인 ${data.matches.length}명 발견`;
+              body.innerHTML = `<p class="text-xs text-slate-500 mb-3">전화번호가 다르므로 다른 사람으로 인식됨. 추가할 위원을 선택하세요.</p>` +
+                data.matches.map((m, i) => `
+                  <div class="border rounded-lg p-3 mb-2 hover:bg-slate-50">
+                    <div class="font-semibold text-sm">${m.name} <span class="text-xs text-slate-500">#${m.sabun}</span></div>
+                    <div class="text-xs text-slate-600 mt-1">📚 ${(m.affiliations||[]).join(' / ') || '소속 정보 없음'}</div>
+                    <div class="text-xs text-slate-600">👤 ${m.position || ''} ${m.major ? '· '+m.major : ''}</div>
+                    <div class="text-xs text-slate-600">📞 ${m.phone || '(공개되지 않음)'} · 📧 ${m.email || '(공개되지 않음)'}</div>
+                    <button type="button" onclick='selectMatch(${i})' class="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded px-3 py-1.5 text-xs font-semibold">이 분으로 선택</button>
+                  </div>
+                `).join('');
+              window._lookupMatches = data.matches;
+            }
+            document.getElementById('lookup-backdrop').classList.remove('hidden');
+            document.getElementById('lookup-modal').classList.remove('hidden');
+          }
+
+          function selectMatch(i) {
+            const m = window._lookupMatches[i];
+            fillFromMatch(m);
+          }
+
+          function closeLookupModal() {
+            document.getElementById('lookup-backdrop').classList.add('hidden');
+            document.getElementById('lookup-modal').classList.add('hidden');
+          }
+        </script>
       </div>
     </div>
 

@@ -60,39 +60,78 @@
 
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">제외 날짜 (콤마 또는 줄바꿈)</label>
-        <input name="excluded_dates" class="w-full border rounded-lg px-3 py-2" placeholder="2026-05-22, 2026-05-25">
-        <p class="text-xs text-slate-500 mt-1">전체 불가능한 날짜를 입력합니다. 위 범위 안에서 자동으로 제외됩니다.</p>
+        <input name="excluded_dates" class="w-full border rounded-lg px-3 py-2" placeholder="2026-05-22, 2026.5.25, 2026/5/27">
+        <p class="text-xs text-slate-500 mt-1">전체 불가능한 날짜를 입력합니다. <code class="bg-slate-100 px-1 rounded">2026-05-22</code>, <code class="bg-slate-100 px-1 rounded">2026.5.22</code>, <code class="bg-slate-100 px-1 rounded">2026/5/22</code>, <code class="bg-slate-100 px-1 rounded">2026.5.22.</code> 다 자동 인식됨.</p>
       </div>
 
+      <%
+        const MORNING_PRESETS = ['9:00','9:30','10:00','10:30','11:00','11:30'];
+        const AFTERNOON_PRESETS = ['13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'];
+      %>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-2">전체 기간 - 가능한 시작 시간</label>
-        <div class="flex flex-wrap gap-2 text-sm mb-2">
-          <span class="text-xs text-slate-500 w-12">오전</span>
-          <% [9,10,11,12].forEach(h => { %>
+        <label class="block text-sm font-medium text-slate-700 mb-2">전체 기간 - 가능한 시작 시간 <span class="text-xs text-slate-400 font-normal">(아무것도 안 고르면 10:00, 14:00, 15:00 기본 적용)</span></label>
+        <div class="flex flex-wrap items-center gap-2 text-sm mb-2">
+          <span class="text-xs text-slate-500 w-12 shrink-0">오전</span>
+          <% MORNING_PRESETS.forEach(t => { %>
             <label class="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-300">
-              <input type="checkbox" name="morning_hours" value="<%= h %>" <%= h === 10 ? 'checked' : '' %>>
-              <span><%= h %>:00</span>
+              <input type="checkbox" name="morning_hours" value="<%= t %>">
+              <span><%= t %></span>
             </label>
           <% }) %>
+          <div id="morning-extra" class="contents"></div>
         </div>
-        <div class="flex flex-wrap gap-2 text-sm">
-          <span class="text-xs text-slate-500 w-12">오후</span>
-          <% [13,14,15,16,17].forEach(h => { %>
+        <div class="flex flex-wrap items-center gap-2 text-sm mb-2">
+          <span class="text-xs text-slate-500 w-12 shrink-0">오후</span>
+          <% AFTERNOON_PRESETS.forEach(t => { %>
             <label class="flex items-center gap-1.5 border rounded-lg px-3 py-1.5 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-300">
-              <input type="checkbox" name="afternoon_hours" value="<%= h %>" <%= [13,14,15].includes(h) ? 'checked' : '' %>>
-              <span><%= h %>:00</span>
+              <input type="checkbox" name="afternoon_hours" value="<%= t %>">
+              <span><%= t %></span>
             </label>
           <% }) %>
+          <div id="afternoon-extra" class="contents"></div>
+        </div>
+        <div class="flex items-center gap-2 text-xs mt-2 bg-slate-50 border rounded-lg px-3 py-2">
+          <span class="text-slate-500">+ 다른 시간 추가:</span>
+          <input id="custom-time-input" type="text" placeholder="예: 8:45" class="border rounded px-2 py-1 w-20">
+          <button type="button" onclick="addCustomTime()" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-2 py-1 text-xs">추가</button>
+          <span class="text-slate-400 text-[11px]">HH:MM 형식 (24시간제). 오전 12시 이전이면 오전, 이후면 오후 그룹에 추가됨.</span>
         </div>
         <p class="text-xs text-slate-500 mt-1.5">선택한 시간만 회의 시작시간으로 후보에 포함됩니다.</p>
       </div>
 
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">특정 날짜만 다른 시간 (선택)</label>
-        <textarea name="date_overrides" rows="2" class="w-full border rounded-lg px-3 py-2 font-mono text-xs" placeholder="2026-05-23 : 10
-2026-05-26 : 13, 14"></textarea>
-        <p class="text-xs text-slate-500 mt-1">예: <code class="bg-slate-100 px-1 rounded">2026-05-23 : 10</code> = 그 날만 10시 시작 후보로. 한 줄 한 날짜.</p>
+        <textarea name="date_overrides" rows="3" class="w-full border rounded-lg px-3 py-2 font-mono text-xs" placeholder="2026-05-22 : 09:30
+2026.5.26. : 13:00, 14:30
+2026/5/27 : 9:30, 13:30"></textarea>
+        <div class="text-xs text-slate-500 mt-1 bg-slate-50 border rounded-lg px-3 py-2">
+          <div class="font-semibold text-slate-700 mb-1">📌 입력 예시</div>
+          <pre class="text-[11px] text-slate-600 m-0">2026-05-22 : 09:30          <span class="text-slate-400"># 5/22 한정으로 9:30시 시작 후보 추가</span>
+2026.5.26. : 13:00, 14:30   <span class="text-slate-400"># 5/26 한정으로 13시·14:30시 두 시간</span>
+2026/5/27 : 9:30, 13:30     <span class="text-slate-400"># 날짜 구분자 -, ., / 다 OK</span></pre>
+          <p class="mt-1 text-[11px] text-slate-500">한 줄에 한 날짜. 위에서 선택한 "전체 기간 시작 시간" 보다 우선 적용됨.</p>
+        </div>
       </div>
+
+      <script>
+        function addCustomTime() {
+          const inp = document.getElementById('custom-time-input');
+          const v = inp.value.trim();
+          const m = v.match(/^(\d{1,2}):(\d{2})$/);
+          if (!m) { alert('HH:MM 형식 (예: 8:45)으로 입력해주세요.'); return; }
+          const hh = parseInt(m[1]), mm = parseInt(m[2]);
+          if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { alert('시:분 범위 확인 (00:00 ~ 23:59)'); return; }
+          const time = `${hh}:${String(mm).padStart(2,'0')}`;
+          const grp = hh < 12 ? 'morning' : 'afternoon';
+          const container = document.getElementById(grp + '-extra');
+          if ([...container.querySelectorAll('input')].some(i => i.value === time)) { alert('이미 추가된 시간입니다.'); inp.value=''; return; }
+          const label = document.createElement('label');
+          label.className = 'flex items-center gap-1.5 border border-amber-400 bg-amber-50 rounded-lg px-3 py-1.5 cursor-pointer';
+          label.innerHTML = `<input type="checkbox" name="${grp}_hours" value="${time}" checked><span>${time}</span><button type="button" class="text-rose-500 ml-1" onclick="this.parentElement.remove()">×</button>`;
+          container.appendChild(label);
+          inp.value = '';
+        }
+      </script>
     </section>
 
     <section class="bg-white border rounded-xl p-6 space-y-4">
@@ -118,9 +157,9 @@
           <option value="0">사용 안함</option>
           <option value="2">2분 후 (데모용)</option>
           <option value="60">1시간 후</option>
-          <option value="180">3시간 후</option>
+          <option value="180" selected>3시간 후</option>
           <option value="360">6시간 후</option>
-          <option value="720" selected>12시간 후</option>
+          <option value="720">12시간 후</option>
           <option value="1440">24시간 후</option>
         </select>
         <p class="text-xs text-slate-500 mt-1.5">SMS 응답이 없는 위원에게 자동으로 ARS 전화가 발신됩니다. (현재는 발송 로그로 시뮬레이션)</p>

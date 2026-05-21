@@ -9,6 +9,7 @@ const { requireAdmin } = require('../middleware/auth');
 const { parseUploadedFile } = require('../services/timetable_parser');
 const { fetchTimetableRaw, fcEventsToTimetable } = require('../services/timetable');
 const hansungOc = require('../services/hansung_oc');
+const hansungDirectory = require('../services/hansung_directory');
 const mailer = require('../services/mailer');
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'data', 'timetables');
@@ -32,17 +33,34 @@ const { getOperatorStats, getMeetingProgress } = require('../services/stats');
 
 const router = express.Router();
 
+function normalizeDate(s) {
+  if (!s) return '';
+  const m = String(s).replace(/\./g, '-').replace(/\//g, '-').match(/^(\d{4})-(\d{1,2})-(\d{1,2})\.?$/);
+  if (!m) return '';
+  return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+}
+
+function parseTimeToken(s) {
+  const m = String(s).trim().match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const h = parseInt(m[1]);
+  const mins = m[2] ? parseInt(m[2]) : 0;
+  if (h < 0 || h > 23 || mins < 0 || mins > 59) return null;
+  return { h, m: mins };
+}
+
 function parseDateOverrides(text) {
   if (!text) return {};
   const result = {};
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
     if (!t) continue;
-    const m = t.match(/^(\d{4}-\d{2}-\d{2})\s*[:\s]\s*(.+)$/);
+    const m = t.match(/^(\d{4}[-.\/]\d{1,2}[-.\/]\d{1,2}\.?)\s*[:\s]\s*(.+)$/);
     if (!m) continue;
-    const date = m[1];
-    const hours = m[2].split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
-    if (hours.length) result[date] = hours;
+    const date = normalizeDate(m[1].replace(/\.$/, ''));
+    if (!date) continue;
+    const tokens = m[2].split(/[\s,]+/).filter(Boolean).map(parseTimeToken).filter(Boolean);
+    if (tokens.length) result[date] = tokens;
   }
   return result;
 }
@@ -183,7 +201,7 @@ router.post('/committees/:id/members', async (req, res) => {
   const openMeetings = db.prepare(`
     SELECT * FROM meetings WHERE committee_id = ? AND status = 'scheduling'
   `).all(committee.id);
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
   const issued = [];
   for (const mt of openMeetings) {
     const meetingFull = db.prepare(`
@@ -384,11 +402,24 @@ router.post('/committees/:id/timetable-sync', async (req, res) => {
   res.redirect(`/admin/committees/${committee.id}?sync=done`);
 });
 
+router.get('/lookup-professor', async (req, res) => {
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.json({ matches: [], reason: 'empty-name' });
+  try {
+    const result = await hansungDirectory.lookupProfessor(name);
+    res.json(result);
+  } catch (e) {
+    res.json({ matches: [], reason: 'error', error: e.message });
+  }
+});
+
 router.get('/settings/smtp', (req, res) => {
   const cfg = mailer.getSmtpConfig();
   res.render('admin/smtp_settings', {
     cfg,
     configured: mailer.isSmtpConfigured(),
+    publicBaseUrl: mailer.getPublicBaseUrl(),
+    currentHost: `${req.protocol}://${req.get('host')}`,
     flash: req.session.smtpFlash || null,
   });
   delete req.session.smtpFlash;
@@ -403,6 +434,9 @@ router.post('/settings/smtp/save', (req, res) => {
     from: req.body.from || req.body.user || '',
     secure: req.body.secure === 'on' ? 'true' : 'false',
   });
+  if (req.body.public_base_url !== undefined) {
+    mailer.setPublicBaseUrl(req.body.public_base_url);
+  }
   req.session.smtpFlash = { kind: 'ok', message: 'SMTP 설정 저장됨' };
   res.redirect('/admin/settings/smtp');
 });
@@ -449,11 +483,16 @@ router.get('/committees/:id/meetings/new', async (req, res) => {
 router.post('/committees/:id/meetings', async (req, res) => {
   const { title, description, location, duration_minutes } = req.body;
   const committeeId = req.params.id;
+  const morningHours = [].concat(req.body.morning_hours || []).map(parseTimeToken).filter(Boolean);
+  const afternoonHours = [].concat(req.body.afternoon_hours || []).map(parseTimeToken).filter(Boolean);
   const constraints = {
-    window: { start: req.body.window_start, end: req.body.window_end },
-    excludedDates: (req.body.excluded_dates || '').split(/[\s,]+/).filter(Boolean),
-    morningHours: [].concat(req.body.morning_hours || []).map(Number).filter(n => !isNaN(n)),
-    afternoonHours: [].concat(req.body.afternoon_hours || []).map(Number).filter(n => !isNaN(n)),
+    window: {
+      start: normalizeDate(req.body.window_start) || req.body.window_start,
+      end: normalizeDate(req.body.window_end) || req.body.window_end,
+    },
+    excludedDates: (req.body.excluded_dates || '').split(/[\s,]+/).map(normalizeDate).filter(Boolean),
+    morningHours: morningHours.length > 0 ? morningHours : [{ h: 10, m: 0 }],
+    afternoonHours: afternoonHours.length > 0 ? afternoonHours : [{ h: 14, m: 0 }, { h: 15, m: 0 }],
     dateOverrides: parseDateOverrides(req.body.date_overrides),
   };
   const channelsArr = [].concat(req.body.notify_channels || ['email','sms']);
@@ -468,12 +507,13 @@ router.post('/committees/:id/meetings', async (req, res) => {
 
   const members = db.prepare('SELECT * FROM members WHERE committee_id = ?').all(committeeId);
   const meetingCreatedAt = new Date();
-  const suggested = await suggestTopSlots(members, {
+  const suggestedResult = await suggestTopSlots(members, {
     durationMinutes: parseInt(duration_minutes) || 60,
     constraints,
     topN: 6,
     referenceDate: meetingCreatedAt,
   });
+  const suggested = suggestedResult.slots || [];
   const insertSlot = db.prepare('INSERT INTO meeting_slots (meeting_id, start_time, end_time, suggested_score) VALUES (?, ?, ?, ?)');
   const insertResp = db.prepare(`
     INSERT OR IGNORE INTO slot_responses (slot_id, member_id, response, auto_filled, note)
@@ -485,20 +525,23 @@ router.post('/committees/:id/meetings', async (req, res) => {
     slotIds.push(r.lastInsertRowid);
   }
 
-  const { getMemberTimetable } = require('../services/scheduler');
-  const { busyAt } = require('../services/timetable');
-  for (const m of members) {
-    const tt = await getMemberTimetable(m, { referenceDate: meetingCreatedAt });
-    if (!tt || tt.length === 0) continue;
-    for (let i = 0; i < suggested.length; i++) {
-      const slot = suggested[i];
-      const slotId = slotIds[i];
-      const conflict = busyAt(tt, slot.start, slot.end);
-      if (conflict) {
-        insertResp.run(slotId, m.id, 'unavailable', `시간표 자동 인식: ${conflict.title} (${conflict.start}~${conflict.end})`);
+  if (suggestedResult.debug && suggestedResult.debug.fallback) {
+    const { getMemberTimetable } = require('../services/scheduler');
+    const { busyAt } = require('../services/timetable');
+    for (const m of members) {
+      const tt = await getMemberTimetable(m, { referenceDate: meetingCreatedAt });
+      if (!tt || tt.length === 0) continue;
+      for (let i = 0; i < suggested.length; i++) {
+        const slot = suggested[i];
+        const slotId = slotIds[i];
+        const conflict = busyAt(tt, slot.start, slot.end);
+        if (conflict) {
+          insertResp.run(slotId, m.id, 'unavailable', `시간표 자동 인식: ${conflict.title} (${conflict.start}~${conflict.end})`);
+        }
       }
     }
   }
+  req.session.lastMeetingDebug = { meetingId, ...suggestedResult.debug };
 
   const insertToken = db.prepare(`
     INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'availability')
@@ -507,7 +550,7 @@ router.post('/committees/:id/meetings', async (req, res) => {
     SELECT mt.*, c.name AS committee_name FROM meetings mt
     JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ?
   `).get(meetingId);
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
   for (const m of members) {
     const token = uuidv4();
     insertToken.run(m.id, meetingId, token);
@@ -577,7 +620,7 @@ router.post('/meetings/:id/remind', async (req, res) => {
       AND sr.auto_filled = 0
     WHERE m.committee_id = ? GROUP BY m.id HAVING COUNT(sr.id) = 0
   `).all(meeting.id, meeting.committee_id);
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
   for (const m of members) {
     const token = db.prepare(`
       SELECT token FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = 'availability'
@@ -603,6 +646,11 @@ router.post('/meetings/:id/confirm', async (req, res) => {
   for (const m of members) {
     await notify.sendMeetingConfirmed(meeting, m, slot);
   }
+  const operator = db.prepare('SELECT * FROM operators WHERE id = ?').get(req.session.operatorId);
+  if (operator && operator.email) {
+    const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+    await notify.sendCreatorConfirmation(meeting, operator, slot, baseUrl);
+  }
   res.redirect(`/admin/meetings/${meeting.id}?action=${force ? 'force-confirmed' : 'confirmed'}`);
 });
 
@@ -624,7 +672,7 @@ router.post('/meetings/:id/request-signatures', async (req, res) => {
   `).get(req.params.id, req.session.operatorId);
   if (!meeting) return res.status(404).send('Not found');
   const members = db.prepare('SELECT * FROM members WHERE committee_id = ?').all(meeting.committee_id);
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
   const insertToken = db.prepare(`
     INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'signature')
   `);
@@ -678,7 +726,7 @@ router.post('/meetings/:id/ars-now', (req, res) => {
     WHERE mt.id = ? AND c.operator_id = ?
   `).get(req.params.id, req.session.operatorId);
   if (!meeting) return res.status(404).send('Not found');
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
   const count = manualArsTrigger(meeting.id, baseUrl);
   res.redirect(`/admin/meetings/${meeting.id}#ars-result-${count}`);
 });

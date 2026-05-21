@@ -12,6 +12,31 @@
 <%
   const TYPE_LABEL = { faculty: '교원', staff: '직원', student: '학생', external: '외부' };
   const TYPE_BADGE = { faculty: 'badge-blue', staff: 'badge-amber', student: 'badge-green', external: 'badge-violet' };
+  const DAY_KO_M = ['일','월','화','수','목','금','토'];
+  function formatKor(dt) {
+    if (!dt) return '';
+    const d = new Date(typeof dt === 'string' ? dt.replace(' ', 'T') : dt);
+    if (isNaN(d.getTime())) return String(dt);
+    const pad = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.(${DAY_KO_M[d.getDay()]}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function buildAnnouncement(meeting, slot) {
+    const when = formatKor(slot.start_time);
+    const lines = [
+      `[${meeting.committee_name}] ${meeting.title}`,
+      `회의 일정이 확정되었습니다.`, ``,
+      `- 일시: ${when}`,
+      `- 장소: ${meeting.location || '추후 공지'}`,
+    ];
+    if (meeting.description && meeting.description.trim()) {
+      lines.push('- 안건');
+      for (const al of meeting.description.split(/\r?\n/).map(s => s.trim()).filter(Boolean)) {
+        lines.push(al);
+      }
+    }
+    lines.push(``, `참석 부탁드립니다.`, `감사합니다.`);
+    return lines.join('\n');
+  }
 %>
 <main class="max-w-7xl mx-auto px-6 py-8">
   <a href="/admin/committees/<%= meeting.committee_id %>" class="text-sm text-slate-500 hover:text-slate-900">← <%= meeting.committee_name %></a>
@@ -26,9 +51,43 @@
       <% if (meeting.description) { %><p class="text-sm text-slate-500 mt-1"><%= meeting.description %></p><% } %>
       <% if (confirmedSlot) { %>
         <div class="mt-2 inline-flex items-center gap-2 bg-blue-50 text-blue-900 px-3 py-1.5 rounded-lg text-sm">
-          <strong>확정 일정:</strong> <%= fmtKor(confirmedSlot.start_time) %> ~ <%= fmtKor(confirmedSlot.end_time).split(' ')[1] %>
+          <strong>확정 일정:</strong> <%= formatKor(confirmedSlot.start_time) %>
           <% if (meeting.location) { %> · <%= meeting.location %><% } %>
         </div>
+        <button type="button" onclick="openAnnouncementPopup()" class="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded px-3 py-1.5 font-semibold">
+          📱 SMS 발송용 텍스트 복사
+        </button>
+
+        <div id="announce-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeAnnouncementPopup()"></div>
+        <div id="announce-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-md bg-white rounded-2xl shadow-2xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-slate-900">📱 SMS / 카톡 발송용 텍스트</h3>
+            <button type="button" onclick="closeAnnouncementPopup()" class="text-slate-400 hover:text-slate-700 text-xl">×</button>
+          </div>
+          <p class="text-xs text-slate-500 mb-2">아래 텍스트를 복사해서 메신저/문자에 그대로 붙여넣으면 돼요.</p>
+          <pre id="announce-text" class="bg-slate-50 border rounded-lg p-3 text-sm whitespace-pre-wrap font-sans select-all"><%= buildAnnouncement(meeting, confirmedSlot) %></pre>
+          <div class="flex gap-2 mt-3">
+            <button type="button" id="announce-copy-btn" onclick="copyAnnouncement()" class="flex-1 inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-semibold">
+              📋 클립보드에 복사
+            </button>
+            <button type="button" onclick="closeAnnouncementPopup()" class="border rounded-lg px-4 py-2 text-sm">닫기</button>
+          </div>
+        </div>
+        <script>
+          function openAnnouncementPopup(){ document.getElementById('announce-backdrop').classList.remove('hidden'); document.getElementById('announce-modal').classList.remove('hidden'); }
+          function closeAnnouncementPopup(){ document.getElementById('announce-backdrop').classList.add('hidden'); document.getElementById('announce-modal').classList.add('hidden'); }
+          function copyAnnouncement(){
+            const txt = document.getElementById('announce-text').innerText;
+            navigator.clipboard.writeText(txt).then(()=>{
+              const b = document.getElementById('announce-copy-btn');
+              const original = b.innerHTML;
+              b.innerHTML = '✅ 복사됨!';
+              b.classList.remove('bg-indigo-600','hover:bg-indigo-700');
+              b.classList.add('bg-emerald-600');
+              setTimeout(()=>{ b.innerHTML = original; b.classList.add('bg-indigo-600','hover:bg-indigo-700'); b.classList.remove('bg-emerald-600'); }, 2000);
+            });
+          }
+        </script>
       <% } %>
       <div class="mt-2 flex flex-wrap gap-1.5 text-xs">
         <% (meeting.notify_channels || 'email,sms').split(',').forEach(ch => { %>
@@ -42,7 +101,8 @@
           <% try { var c = JSON.parse(meeting.schedule_constraints); %>
             <span class="badge badge-gray"><%= c.window?.start %> ~ <%= c.window?.end %></span>
             <% if (c.excludedDates?.length) { %><span class="badge badge-red">제외: <%= c.excludedDates.join(', ') %></span><% } %>
-            <% var hours = [...(c.morningHours||[]), ...(c.afternoonHours||[])]; if (hours.length) { %><span class="badge badge-violet">시작 시간: <%= hours.map(h=>h+':00').join(', ') %></span><% } %>
+            <% function fmtTimeEntry(h){ if(typeof h==='number') return h+':00'; if(h&&typeof h==='object'&&typeof h.h==='number') return h.h+':'+String(h.m||0).padStart(2,'0'); if(typeof h==='string'){var m=h.match(/^(\d{1,2})(?::(\d{2}))?$/); if(m) return m[1]+':'+(m[2]||'00');} return String(h); } %>
+            <% var hours = [...(c.morningHours||[]), ...(c.afternoonHours||[])]; if (hours.length) { %><span class="badge badge-violet">시작 시간: <%= hours.map(fmtTimeEntry).join(' · ') %></span><% } %>
           <% } catch(e) {} %>
         <% } %>
       </div>

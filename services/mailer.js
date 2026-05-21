@@ -47,16 +47,29 @@ function buildTransport() {
   return { transport: cachedTransport, cfg: c };
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function textToHtml(text) {
+  if (!text) return '';
+  const urlRe = /(https?:\/\/[^\s<>"]+)/g;
+  return escapeHtml(text)
+    .replace(urlRe, (url) => `<a href="${url}" style="color:#4F46E5;text-decoration:underline;word-break:break-all" target="_blank">${url}</a>`)
+    .replace(/\n/g, '<br>');
+}
+
 async function sendMail({ to, subject, text, html }) {
   if (!to) return { ok: false, reason: 'no-recipient' };
   const { transport, cfg } = buildTransport();
   if (!transport) return { ok: false, reason: 'smtp-not-configured' };
   try {
+    const finalHtml = html || (text ? `<div style="font-family:'Pretendard','맑은 고딕',sans-serif;line-height:1.6;color:#1f2937;">${textToHtml(text)}</div>` : '');
     const info = await transport.sendMail({
       from: cfg.from || cfg.user,
       to, subject,
       text: text || (html ? html.replace(/<[^>]+>/g, '') : ''),
-      html: html || (text ? text.replace(/\n/g, '<br>') : ''),
+      html: finalHtml,
     });
     return { ok: true, messageId: info.messageId, response: info.response };
   } catch (err) {
@@ -75,7 +88,21 @@ async function verifySmtp() {
   }
 }
 
+function getPublicBaseUrl() {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'public_base_url'").get();
+  return row && row.value ? row.value.replace(/\/+$/, '') : '';
+}
+
+function setPublicBaseUrl(url) {
+  const clean = (url || '').trim().replace(/\/+$/, '');
+  db.prepare(`
+    INSERT INTO app_settings (key, value, updated_at) VALUES ('public_base_url', ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+  `).run(clean);
+}
+
 module.exports = {
   getSmtpConfig, setSmtpConfig, isSmtpConfigured,
+  getPublicBaseUrl, setPublicBaseUrl,
   sendMail, verifySmtp,
 };
