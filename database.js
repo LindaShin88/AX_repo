@@ -168,6 +168,12 @@ ensureColumn('operators', 'rejection_reason', 'TEXT');
 
 ensureColumn('members', 'timetable_meta', 'TEXT');
 
+ensureColumn('meetings', 'uploaded_minutes_path', 'TEXT');
+ensureColumn('meetings', 'uploaded_minutes_original_name', 'TEXT');
+ensureColumn('meetings', 'uploaded_minutes_uploaded_at', 'DATETIME');
+ensureColumn('meetings', 'final_pdf_path', 'TEXT');
+ensureColumn('meetings', 'final_pdf_generated_at', 'DATETIME');
+
 function migrateMemberTypes() {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='members'").get();
   if (!row || !row.sql.includes("'internal'")) return;

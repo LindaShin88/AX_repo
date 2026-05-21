@@ -24,10 +24,43 @@ const upload = multer({
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
+
+const MINUTES_DIR = path.join(__dirname, '..', 'data', 'uploaded_minutes');
+if (!fs.existsSync(MINUTES_DIR)) fs.mkdirSync(MINUTES_DIR, { recursive: true });
+const ALLOWED_MINUTES_EXT = new Set(['.pdf', '.hwp', '.hwpx']);
+
+function decodeOriginalName(name) {
+  if (!name) return name;
+  try {
+    const fixed = Buffer.from(name, 'latin1').toString('utf8');
+    if (!/[�]/.test(fixed)) return fixed;
+  } catch (e) {}
+  return name;
+}
+
+const minutesUpload = multer({
+  storage: multer.diskStorage({
+    destination: MINUTES_DIR,
+    filename: (req, file, cb) => {
+      file.originalname = decodeOriginalName(file.originalname);
+      const ext = path.extname(file.originalname).toLowerCase();
+      const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+      cb(null, `meeting_${req.params.id}_${Date.now()}_${base}${ext}`);
+    },
+  }),
+  limits: { fileSize: 30 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    file.originalname = decodeOriginalName(file.originalname);
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ALLOWED_MINUTES_EXT.has(ext)) return cb(null, true);
+    cb(new Error('PDF 또는 한글(.hwp/.hwpx) 파일만 업로드 가능합니다.'));
+  },
+});
 const { suggestTopSlots, defaultConstraints } = require('../services/scheduler');
 const { getTimetable, getTimetableImageUrl, DAY_KO } = require('../services/timetable');
 const notify = require('../services/notify');
 const { generateMinutesPDF } = require('../services/pdf');
+const { generateFinalSignedPDF } = require('../services/finalpdf');
 const { manualArsTrigger } = require('../services/escalation');
 const { getOperatorStats, getMeetingProgress } = require('../services/stats');
 
@@ -567,6 +600,9 @@ router.get('/meetings/:id', (req, res) => {
     WHERE mt.id = ? AND c.operator_id = ?
   `).get(req.params.id, req.session.operatorId);
   if (!meeting) return res.status(404).send('Not found');
+  if (meeting.uploaded_minutes_original_name) {
+    meeting.uploaded_minutes_original_name = decodeOriginalName(meeting.uploaded_minutes_original_name);
+  }
   const slots = db.prepare('SELECT * FROM meeting_slots WHERE meeting_id = ? ORDER BY start_time').all(meeting.id);
   const members = db.prepare('SELECT * FROM members WHERE committee_id = ?').all(meeting.committee_id);
   const responses = db.prepare(`
@@ -598,11 +634,88 @@ router.get('/meetings/:id', (req, res) => {
   });
 
   const progress = getMeetingProgress(meeting.id);
+
+  let timetableMatrix = null;
+  try {
+    const constraints = meeting.schedule_constraints ? JSON.parse(meeting.schedule_constraints) : null;
+    const windowStart = constraints?.window?.start;
+    const windowEnd = constraints?.window?.end;
+    if (windowStart && windowEnd) {
+      const faculty = members.filter(m => m.type === 'faculty');
+      const facultyTimetables = faculty.map(m => {
+        let events = [];
+        if (m.timetable_cache) {
+          try { events = JSON.parse(m.timetable_cache) || []; } catch (e) {}
+        }
+        return { id: m.id, name: m.name, events };
+      });
+
+      const dates = [];
+      const start = new Date(windowStart + 'T00:00:00');
+      const end = new Date(windowEnd + 'T00:00:00');
+      const KO = ['일','월','화','수','목','금','토'];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dow = d.getDay();
+        if (dow === 0 || dow === 6) continue;
+        dates.push({
+          dateStr: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
+          mmdd: `${d.getMonth()+1}/${d.getDate()}`,
+          dayKo: KO[dow],
+          dow,
+        });
+      }
+
+      const timeSlots = [];
+      for (let h = 9; h < 18; h++) {
+        for (const m of [0, 30]) {
+          timeSlots.push({ h, m, label: `${h}:${String(m).padStart(2,'0')}`, key: `${h}-${m}` });
+        }
+      }
+
+      const rows = timeSlots.map(slot => {
+        const slotStartMin = slot.h * 60 + slot.m;
+        const slotEndMin = slotStartMin + 30;
+        const cells = dates.map(date => {
+          const busy = [];
+          for (const f of facultyTimetables) {
+            for (const ev of f.events) {
+              if (ev.day !== date.dow) continue;
+              const [sh, sm] = String(ev.start).split(':').map(Number);
+              const [eh, em] = String(ev.end).split(':').map(Number);
+              const cs = sh * 60 + sm;
+              const ce = eh * 60 + em;
+              if (slotStartMin < ce && slotEndMin > cs) {
+                busy.push({ name: f.name, title: ev.title || '수업' });
+                break;
+              }
+            }
+          }
+          return { busy };
+        });
+        return { slot, cells };
+      });
+
+      timetableMatrix = {
+        dates,
+        timeSlots,
+        rows,
+        facultyCount: faculty.length,
+        windowStart,
+        windowEnd,
+      };
+    }
+  } catch (e) {
+    console.warn('[timetable matrix] failed:', e.message);
+  }
+
   res.render('admin/meeting_detail', {
     meeting, slots, members, responses, tokens, signatures, notifications,
     confirmedSlot, slotMatrix, baseUrl: `${req.protocol}://${req.get('host')}`,
     getTimetableImageUrl, progress,
     actionFlag: req.query.action || null,
+    actionMsg: req.query.msg || '',
+    actionCount: req.query.count || 0,
+    timetableMatrix,
     smtpConfigured: mailer.isSmtpConfigured(),
   });
 });
@@ -665,6 +778,137 @@ router.post('/meetings/:id/minutes', (req, res) => {
   res.redirect(`/admin/meetings/${meeting.id}`);
 });
 
+router.post('/meetings/:id/minutes-upload', (req, res) => {
+  minutesUpload.single('minutes_file')(req, res, (err) => {
+    if (err) {
+      return res.redirect(`/admin/meetings/${req.params.id}?action=minutes-upload-err&msg=${encodeURIComponent(err.message)}`);
+    }
+    const meeting = db.prepare(`
+      SELECT mt.* FROM meetings mt JOIN committees c ON c.id = mt.committee_id
+      WHERE mt.id = ? AND c.operator_id = ?
+    `).get(req.params.id, req.session.operatorId);
+    if (!meeting) return res.status(404).send('Not found');
+    if (!req.file) return res.redirect(`/admin/meetings/${meeting.id}?action=minutes-upload-err&msg=${encodeURIComponent('파일이 첨부되지 않았습니다.')}`);
+
+    if (meeting.uploaded_minutes_path) {
+      const oldPath = path.join(__dirname, '..', meeting.uploaded_minutes_path);
+      if (fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch (e) {}
+      }
+    }
+
+    const relPath = path.relative(path.join(__dirname, '..'), req.file.path).replace(/\\/g, '/');
+    db.prepare(`
+      UPDATE meetings
+         SET uploaded_minutes_path = ?,
+             uploaded_minutes_original_name = ?,
+             uploaded_minutes_uploaded_at = CURRENT_TIMESTAMP
+       WHERE id = ?
+    `).run(relPath, req.file.originalname, meeting.id);
+
+    res.redirect(`/admin/meetings/${meeting.id}?action=minutes-uploaded`);
+  });
+});
+
+router.post('/meetings/:id/minutes-delete', (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.* FROM meetings mt JOIN committees c ON c.id = mt.committee_id
+    WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting) return res.status(404).send('Not found');
+  if (meeting.uploaded_minutes_path) {
+    const fp = path.join(__dirname, '..', meeting.uploaded_minutes_path);
+    if (fs.existsSync(fp)) {
+      try { fs.unlinkSync(fp); } catch (e) {}
+    }
+  }
+  db.prepare(`
+    UPDATE meetings
+       SET uploaded_minutes_path = NULL,
+           uploaded_minutes_original_name = NULL,
+           uploaded_minutes_uploaded_at = NULL
+     WHERE id = ?
+  `).run(meeting.id);
+  res.redirect(`/admin/meetings/${meeting.id}?action=minutes-deleted`);
+});
+
+router.get('/meetings/:id/uploaded-minutes', (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.* FROM meetings mt JOIN committees c ON c.id = mt.committee_id
+    WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting || !meeting.uploaded_minutes_path) return res.status(404).send('업로드된 회의록이 없습니다.');
+  const fp = path.join(__dirname, '..', meeting.uploaded_minutes_path);
+  if (!fs.existsSync(fp)) return res.status(404).send('파일을 찾을 수 없습니다.');
+  const cleanName = decodeOriginalName(meeting.uploaded_minutes_original_name) || path.basename(fp);
+  res.download(fp, cleanName);
+});
+
+router.post('/meetings/:id/request-external-signatures', async (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.*, c.name AS committee_name FROM meetings mt
+    JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting) return res.status(404).send('Not found');
+
+  const externals = db.prepare(`
+    SELECT * FROM members WHERE committee_id = ? AND type = 'external'
+  `).all(meeting.committee_id);
+
+  if (externals.length === 0) {
+    return res.redirect(`/admin/meetings/${meeting.id}?action=no-external`);
+  }
+
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+  const insertToken = db.prepare(`
+    INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'signature')
+  `);
+  let sentCount = 0;
+  for (const m of externals) {
+    const existing = db.prepare(`
+      SELECT * FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = 'signature'
+    `).get(meeting.id, m.id);
+    let token;
+    if (existing) {
+      token = existing.token;
+    } else {
+      token = uuidv4();
+      insertToken.run(m.id, meeting.id, token);
+    }
+    await notify.sendSignatureRequest(meeting, m, token, baseUrl, { hasUploadedMinutes: !!meeting.uploaded_minutes_path });
+    sentCount += 1;
+  }
+  res.redirect(`/admin/meetings/${meeting.id}?action=external-signatures-sent&count=${sentCount}`);
+});
+
+router.post('/meetings/:id/remind-external-signatures', async (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.*, c.name AS committee_name FROM meetings mt
+    JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting) return res.status(404).send('Not found');
+
+  const pending = db.prepare(`
+    SELECT m.*, t.token
+      FROM members m
+      JOIN member_tokens t ON t.member_id = m.id AND t.meeting_id = ? AND t.purpose = 'signature'
+     WHERE m.committee_id = ? AND m.type = 'external'
+       AND NOT EXISTS (SELECT 1 FROM signatures s WHERE s.meeting_id = ? AND s.member_id = m.id)
+  `).all(meeting.id, meeting.committee_id, meeting.id);
+
+  if (pending.length === 0) {
+    return res.redirect(`/admin/meetings/${meeting.id}?action=no-pending-external`);
+  }
+
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+  let count = 0;
+  for (const m of pending) {
+    await notify.sendSignatureReminder(meeting, m, m.token, baseUrl, { hasUploadedMinutes: !!meeting.uploaded_minutes_path });
+    count += 1;
+  }
+  res.redirect(`/admin/meetings/${meeting.id}?action=external-reminded&count=${count}`);
+});
+
 router.post('/meetings/:id/request-signatures', async (req, res) => {
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name FROM meetings mt
@@ -690,6 +934,46 @@ router.post('/meetings/:id/request-signatures', async (req, res) => {
     await notify.sendSignatureRequest(meeting, m, token, baseUrl);
   }
   res.redirect(`/admin/meetings/${meeting.id}`);
+});
+
+router.post('/meetings/:id/generate-final-pdf', async (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.*, c.name AS committee_name, c.id AS committee_id FROM meetings mt
+    JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting) return res.status(404).send('Not found');
+  const committee = db.prepare('SELECT * FROM committees WHERE id = ?').get(meeting.committee_id);
+  const externals = db.prepare(`SELECT * FROM members WHERE committee_id = ? AND type = 'external'`).all(meeting.committee_id);
+  const signatures = db.prepare('SELECT * FROM signatures WHERE meeting_id = ?').all(meeting.id);
+  const uploadedAbs = meeting.uploaded_minutes_path ? path.join(__dirname, '..', meeting.uploaded_minutes_path) : null;
+
+  const outDir = path.join(__dirname, '..', 'data', 'pdfs');
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, `final_${meeting.id}_${Date.now()}.pdf`);
+  try {
+    const result = await generateFinalSignedPDF({
+      meeting, committee, externals, signatures,
+      uploadedPath: uploadedAbs, outputPath: outPath,
+    });
+    const relOut = path.relative(path.join(__dirname, '..'), result.outputPath).replace(/\\/g, '/');
+    db.prepare(`UPDATE meetings SET final_pdf_path = ?, final_pdf_generated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(relOut, meeting.id);
+    res.redirect(`/admin/meetings/${meeting.id}?action=final-pdf-generated&merged=${result.mergedWithUploaded ? '1' : '0'}`);
+  } catch (err) {
+    console.error('[final-pdf]', err);
+    res.redirect(`/admin/meetings/${meeting.id}?action=final-pdf-err&msg=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.get('/meetings/:id/final-pdf', (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.* FROM meetings mt JOIN committees c ON c.id = mt.committee_id
+    WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting || !meeting.final_pdf_path) return res.status(404).send('최종 PDF가 아직 생성되지 않았습니다.');
+  const fp = path.join(__dirname, '..', meeting.final_pdf_path);
+  if (!fs.existsSync(fp)) return res.status(404).send('파일을 찾을 수 없습니다.');
+  res.download(fp, `회의록_서명완료_${meeting.id}.pdf`);
 });
 
 router.post('/meetings/:id/generate-pdf', async (req, res) => {

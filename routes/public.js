@@ -1,10 +1,37 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const db = require('../database');
 const { getTimetable, busyAt, getTimetableImageUrl } = require('../services/timetable');
 const notify = require('../services/notify');
 const mailer = require('../services/mailer');
+const { generateFinalSignedPDF } = require('../services/finalpdf');
 
 const router = express.Router();
+
+function decodeOriginalName(name) {
+  if (!name) return name;
+  try {
+    const fixed = Buffer.from(name, 'latin1').toString('utf8');
+    if (!/[�]/.test(fixed)) return fixed;
+  } catch (e) {}
+  return name;
+}
+
+router.get('/minutes/:token', (req, res) => {
+  const token = db.prepare(`
+    SELECT t.*, mt.uploaded_minutes_path, mt.uploaded_minutes_original_name
+    FROM member_tokens t
+    JOIN meetings mt ON mt.id = t.meeting_id
+    WHERE t.token = ? AND t.purpose = 'signature'
+  `).get(req.params.token);
+  if (!token) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
+  if (!token.uploaded_minutes_path) return res.status(404).render('public/error', { message: '업로드된 회의록이 없습니다.' });
+  const fp = path.join(__dirname, '..', token.uploaded_minutes_path);
+  if (!fs.existsSync(fp)) return res.status(404).render('public/error', { message: '파일을 찾을 수 없습니다.' });
+  const cleanName = decodeOriginalName(token.uploaded_minutes_original_name) || path.basename(fp);
+  res.download(fp, cleanName);
+});
 
 router.get('/avail/:token', (req, res) => {
   const token = db.prepare(`
@@ -66,6 +93,7 @@ router.get('/sign/:token', (req, res) => {
   const token = db.prepare(`
     SELECT t.*, m.name AS member_name, m.role, m.affiliation, m.type AS member_type,
            mt.id AS meeting_id, mt.title, mt.description, mt.location, mt.minutes_text, mt.confirmed_slot_id,
+           mt.uploaded_minutes_path, mt.uploaded_minutes_original_name, mt.uploaded_minutes_uploaded_at,
            c.name AS committee_name
     FROM member_tokens t
     JOIN members m ON m.id = t.member_id
@@ -73,13 +101,16 @@ router.get('/sign/:token', (req, res) => {
     JOIN committees c ON c.id = mt.committee_id
     WHERE t.token = ? AND t.purpose = 'signature'
   `).get(req.params.token);
+  if (token && token.uploaded_minutes_original_name) {
+    token.uploaded_minutes_original_name = decodeOriginalName(token.uploaded_minutes_original_name);
+  }
   if (!token) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
   const slot = token.confirmed_slot_id ? db.prepare('SELECT * FROM meeting_slots WHERE id = ?').get(token.confirmed_slot_id) : null;
   const existing = db.prepare('SELECT * FROM signatures WHERE meeting_id = ? AND member_id = ?').get(token.meeting_id, token.member_id);
   res.render('public/signature', { token, slot, existing });
 });
 
-router.post('/sign/:token', (req, res) => {
+router.post('/sign/:token', async (req, res) => {
   const token = db.prepare(`
     SELECT t.*, mt.id AS meeting_id FROM member_tokens t
     JOIN meetings mt ON mt.id = t.meeting_id
@@ -102,9 +133,43 @@ router.post('/sign/:token', (req, res) => {
       signed_at = CURRENT_TIMESTAMP
   `).run(token.meeting_id, token.member_id, signature_data, ip, ua);
   db.prepare('UPDATE member_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(token.id);
+
+  let allExternalsSigned = false;
+  try {
+    const meeting = db.prepare(`
+      SELECT mt.*, c.name AS committee_name, c.id AS committee_id
+      FROM meetings mt JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ?
+    `).get(token.meeting_id);
+    if (meeting) {
+      const externals = db.prepare(`SELECT * FROM members WHERE committee_id = ? AND type = 'external'`).all(meeting.committee_id);
+      const signatures = db.prepare('SELECT * FROM signatures WHERE meeting_id = ?').all(meeting.id);
+      const signedIds = new Set(signatures.map(s => s.member_id));
+      allExternalsSigned = externals.length > 0 && externals.every(e => signedIds.has(e.id));
+
+      if (allExternalsSigned) {
+        const committee = db.prepare('SELECT * FROM committees WHERE id = ?').get(meeting.committee_id);
+        const uploadedAbs = meeting.uploaded_minutes_path ? path.join(__dirname, '..', meeting.uploaded_minutes_path) : null;
+        const outDir = path.join(__dirname, '..', 'data', 'pdfs');
+        if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+        const outPath = path.join(outDir, `final_${meeting.id}_${Date.now()}.pdf`);
+        const result = await generateFinalSignedPDF({
+          meeting, committee, externals, signatures,
+          uploadedPath: uploadedAbs, outputPath: outPath,
+        });
+        const relOut = path.relative(path.join(__dirname, '..'), result.outputPath).replace(/\\/g, '/');
+        db.prepare(`UPDATE meetings SET final_pdf_path = ?, final_pdf_generated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+          .run(relOut, meeting.id);
+      }
+    }
+  } catch (err) {
+    console.error('[auto final-pdf]', err);
+  }
+
   res.render('public/thanks', {
     title: '서명이 완료되었습니다',
-    message: '회의록 전자서명이 정상 등록되었습니다. 감사합니다.',
+    message: allExternalsSigned
+      ? '회의록 전자서명이 정상 등록되었습니다. 모든 외부위원의 서명이 완료되어 최종 회의록 PDF가 자동 생성되었습니다.'
+      : '회의록 전자서명이 정상 등록되었습니다. 감사합니다.',
   });
 });
 

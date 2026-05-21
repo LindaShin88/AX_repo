@@ -215,8 +215,9 @@ async function maybeAutoConfirmMeeting(meetingId, baseUrl) {
   }
 }
 
-async function sendSignatureRequest(meeting, member, token, baseUrl) {
+async function sendSignatureRequest(meeting, member, token, baseUrl, opts = {}) {
   const link = `${baseUrl}/sign/${token}`;
+  const minutesLink = opts.hasUploadedMinutes ? `${baseUrl}/minutes/${token}` : null;
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
@@ -224,13 +225,56 @@ async function sendSignatureRequest(meeting, member, token, baseUrl) {
     if (channel === 'sms') {
       subject = `[서명요청] ${meeting.title}`;
       content = `[${meeting.committee_name}] ${member.name} 위원님, "${meeting.title}" 회의록 전자서명 부탁드립니다.\n${link}`;
+      if (minutesLink) content += `\n회의록: ${minutesLink}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_request', channel, subject, content, status: 'SMS는 운영자가 직접 발송' }));
     } else {
       subject = `[${meeting.committee_name}] ${meeting.title} 회의록 서명 요청`;
-      content = `${member.name} 위원님, "${meeting.title}" 회의록 확인 및 서명 부탁드립니다.\n별도 로그인 없이 아래 링크에서 진행 가능합니다.\n\n${link}`;
+      const parts = [
+        `${member.name} 위원님, "${meeting.title}" 회의록 확인 및 서명 부탁드립니다.`,
+        `별도 로그인 없이 아래 링크에서 진행 가능합니다.`,
+        ``,
+        `▶ 서명 페이지: ${link}`,
+      ];
+      if (minutesLink) {
+        parts.push(`▶ 회의록 파일 다운로드: ${minutesLink}`);
+      }
+      content = parts.join('\n');
       const result = await deliverEmail(member, subject, content);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_request', channel, subject, content, status }));
+    }
+  }
+  return ids;
+}
+
+async function sendSignatureReminder(meeting, member, token, baseUrl, opts = {}) {
+  const link = `${baseUrl}/sign/${token}`;
+  const minutesLink = opts.hasUploadedMinutes ? `${baseUrl}/minutes/${token}` : null;
+  const channels = pickChannels(meeting, member);
+  const ids = [];
+  for (const { channel } of channels) {
+    let subject, content;
+    if (channel === 'sms') {
+      subject = `[서명 리마인드] ${meeting.title}`;
+      content = `[리마인드][${meeting.committee_name}] ${member.name} 위원님, "${meeting.title}" 회의록 전자서명을 아직 받지 못했습니다. 빠른 진행 부탁드립니다.\n${link}`;
+      if (minutesLink) content += `\n회의록: ${minutesLink}`;
+      ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_reminder', channel, subject, content, status: 'SMS는 운영자가 직접 발송' }));
+    } else {
+      subject = `[리마인드] ${meeting.title} 회의록 서명을 아직 받지 못했습니다`;
+      const parts = [
+        `${member.name} 위원님, 안녕하세요.`,
+        ``,
+        `"${meeting.title}" 회의록 전자서명이 아직 등록되지 않아 다시 한 번 안내드립니다.`,
+        `별도 로그인 없이 아래 링크에서 진행 가능합니다.`,
+        ``,
+        `▶ 서명 페이지: ${link}`,
+      ];
+      if (minutesLink) parts.push(`▶ 회의록 파일 다운로드: ${minutesLink}`);
+      parts.push('', '바쁘신 와중에 죄송하지만 확인 부탁드립니다.', '감사합니다.');
+      content = parts.join('\n');
+      const result = await deliverEmail(member, subject, content);
+      const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
+      ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_reminder', channel, subject, content, status }));
     }
   }
   return ids;
@@ -265,6 +309,7 @@ module.exports = {
   sendCreatorTieChoice,
   maybeAutoConfirmMeeting,
   sendSignatureRequest,
+  sendSignatureReminder,
   logArsCall,
   formatKoreanDateTime,
   buildConfirmedAnnouncement,

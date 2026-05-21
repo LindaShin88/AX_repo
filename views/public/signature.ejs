@@ -17,6 +17,17 @@
     <% } %>
   </div>
 
+  <% if (token.uploaded_minutes_path) { %>
+  <div class="bg-white rounded-2xl border p-6 mb-4">
+    <h3 class="font-bold text-slate-900 mb-2">📄 회의록 파일</h3>
+    <p class="text-xs text-slate-500 mb-3">아래 버튼을 눌러 회의록을 먼저 확인하신 후 서명해주세요.</p>
+    <a href="/minutes/<%= token.token %>" target="_blank"
+       class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-xl font-semibold text-sm">
+      ⬇ 회의록 다운로드 (<%= token.uploaded_minutes_original_name %>)
+    </a>
+  </div>
+  <% } %>
+
   <% if (token.minutes_text) { %>
   <div class="bg-white rounded-2xl border p-6 mb-4">
     <h3 class="font-bold text-slate-900 mb-2">회의록 내용</h3>

@@ -113,20 +113,20 @@
 
       <div class="mt-4 border-t pt-4">
         <div class="text-sm font-semibold text-slate-700 mb-1">+ 위원 추가</div>
-        <div class="text-xs text-slate-500 mb-3">교원은 이름 입력 후 <strong>🔎 한성대에서 자동 채우기</strong> 클릭 → 이메일/소속/사번 자동 입력 (동명이인이면 선택 화면)</div>
+        <div id="lookup-hint" class="text-xs text-slate-500 mb-3">교원은 이름 입력 후 <strong>🔎 한성대에서 자동 채우기</strong> 클릭 → 이메일/소속/사번 자동 입력 (동명이인이면 선택 화면)</div>
         <form id="add-member-form" method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3">
           <div class="col-span-2 grid grid-cols-4 gap-2">
             <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-400">
-              <input type="radio" name="type" value="faculty" checked> <span class="text-xs">교원</span>
+              <input type="radio" name="type" value="faculty" checked onchange="updateLookupVisibility()"> <span class="text-xs">교원</span>
             </label>
             <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-amber-50 has-[:checked]:border-amber-400">
-              <input type="radio" name="type" value="staff"> <span class="text-xs">직원</span>
+              <input type="radio" name="type" value="staff" onchange="updateLookupVisibility()"> <span class="text-xs">직원</span>
             </label>
             <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-400">
-              <input type="radio" name="type" value="student"> <span class="text-xs">학생</span>
+              <input type="radio" name="type" value="student" onchange="updateLookupVisibility()"> <span class="text-xs">학생</span>
             </label>
             <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-violet-50 has-[:checked]:border-violet-400">
-              <input type="radio" name="type" value="external"> <span class="text-xs">외부위원</span>
+              <input type="radio" name="type" value="external" onchange="updateLookupVisibility()"> <span class="text-xs">외부위원</span>
             </label>
           </div>
           <div class="col-span-2 flex gap-2">
@@ -151,6 +151,22 @@
         </div>
 
         <script>
+          function updateLookupVisibility() {
+            const selectedType = document.querySelector('input[name="type"]:checked')?.value;
+            const isFaculty = selectedType === 'faculty';
+            const btn = document.getElementById('lookup-btn');
+            const hint = document.getElementById('lookup-hint');
+            const submitBtn = document.querySelector('#add-member-form button.col-span-2');
+            if (btn) btn.style.display = isFaculty ? '' : 'none';
+            if (hint) hint.style.display = isFaculty ? '' : 'none';
+            if (submitBtn) {
+              submitBtn.innerText = isFaculty
+                ? '+ 위원 추가 (교원은 시간표 자동 연결)'
+                : '+ 위원 추가';
+            }
+          }
+          document.addEventListener('DOMContentLoaded', updateLookupVisibility);
+
           async function lookupProfessor() {
             const name = document.getElementById('add-name').value.trim();
             if (!name) { alert('이름을 먼저 입력해주세요'); return; }

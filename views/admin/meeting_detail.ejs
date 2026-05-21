@@ -274,6 +274,54 @@
   </section>
   <% } %>
 
+  <% if (locals.timetableMatrix && timetableMatrix.dates.length > 0 && timetableMatrix.facultyCount > 0) { %>
+  <section class="bg-white border rounded-xl p-5 mb-6">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <h2 class="font-bold text-slate-900">📅 교원 시간표 가능/불가 매트릭스</h2>
+      <div class="flex items-center gap-3 text-xs">
+        <span class="flex items-center gap-1"><span class="inline-block w-4 h-4 rounded bg-emerald-100 border border-emerald-300"></span> 모두 가능</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-4 h-4 rounded bg-rose-200 border border-rose-400"></span> 수업 있음</span>
+        <span class="text-slate-500">교원 <%= timetableMatrix.facultyCount %>명 · <%= timetableMatrix.windowStart %> ~ <%= timetableMatrix.windowEnd %></span>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mb-3">셀에 마우스 올리면 누가 어떤 수업인지 표시됩니다. (평일만, 9:00~17:30, 30분 단위)</p>
+
+    <div class="overflow-x-auto">
+      <table class="border-collapse text-xs">
+        <thead>
+          <tr>
+            <th class="border border-slate-200 bg-slate-50 px-2 py-1 sticky left-0 z-10 text-slate-500 font-normal">시간 \ 날짜</th>
+            <% timetableMatrix.dates.forEach(d => { %>
+              <th class="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700 font-semibold whitespace-nowrap">
+                <%= d.mmdd %><br><span class="text-[10px] font-normal text-slate-500">(<%= d.dayKo %>)</span>
+              </th>
+            <% }) %>
+          </tr>
+        </thead>
+        <tbody>
+          <% timetableMatrix.rows.forEach(row => { %>
+            <tr>
+              <td class="border border-slate-200 bg-slate-50 px-2 py-0.5 sticky left-0 z-10 text-slate-600 font-mono text-right whitespace-nowrap">
+                <%= row.slot.label %>
+              </td>
+              <% row.cells.forEach(cell => { %>
+                <% if (cell.busy.length > 0) { %>
+                  <td class="border border-rose-300 bg-rose-200 hover:bg-rose-300 cursor-help" style="min-width:54px; height:22px;"
+                      title="수업 있음 — <%= cell.busy.map(b => b.name + ': ' + b.title).join(', ') %>">
+                    <span class="block text-center text-[10px] text-rose-900 font-semibold leading-none">×<%= cell.busy.length %></span>
+                  </td>
+                <% } else { %>
+                  <td class="border border-emerald-200 bg-emerald-100 hover:bg-emerald-200" style="min-width:54px; height:22px;" title="모든 교원 가능"></td>
+                <% } %>
+              <% }) %>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <% } %>
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <section class="bg-white border rounded-xl p-5">
       <div class="flex items-center justify-between mb-3">
@@ -328,43 +376,238 @@
 
   <% if (meeting.status === 'confirmed' || meeting.status === 'completed') { %>
   <section class="bg-white border rounded-xl p-5 mb-6">
-    <h2 class="font-bold text-slate-900 mb-3">📝 회의록 및 서명</h2>
-    <form method="POST" action="/admin/meetings/<%= meeting.id %>/minutes" class="mb-4">
-      <textarea name="minutes_text" rows="6" class="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="회의록 내용을 입력하세요..."><%= meeting.minutes_text || '' %></textarea>
-      <button class="mt-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold">회의록 저장</button>
-    </form>
+    <h2 class="font-bold text-slate-900 mb-3">📝 회의록 및 외부위원 서명</h2>
 
-    <div class="flex gap-2 mb-4">
-      <form method="POST" action="/admin/meetings/<%= meeting.id %>/request-signatures">
-        <button class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">✍️ 위원 전체 서명 요청</button>
+    <% if (locals.actionFlag === 'minutes-uploaded') { %>
+      <div class="mb-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-2 text-sm">✅ 회의록 파일이 업로드되었습니다.</div>
+    <% } else if (locals.actionFlag === 'minutes-deleted') { %>
+      <div class="mb-3 bg-slate-50 border border-slate-300 text-slate-700 rounded-lg px-3 py-2 text-sm">🗑️ 업로드된 회의록을 삭제했습니다.</div>
+    <% } else if (locals.actionFlag === 'minutes-upload-err') { %>
+      <div class="mb-3 bg-rose-50 border border-rose-300 text-rose-900 rounded-lg px-3 py-2 text-sm">⚠️ 업로드 실패: <%= locals.actionMsg || '알 수 없는 오류' %></div>
+    <% } else if (locals.actionFlag === 'external-signatures-sent') { %>
+      <div class="mb-3 bg-violet-50 border border-violet-300 text-violet-900 rounded-lg px-3 py-2 text-sm">📨 외부위원 <%= locals.actionCount || 0 %>명에게 서명 요청을 발송했습니다.</div>
+    <% } else if (locals.actionFlag === 'external-reminded') { %>
+      <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⏰ 미서명 외부위원 <%= locals.actionCount || 0 %>명에게 리마인드를 보냈습니다.</div>
+    <% } else if (locals.actionFlag === 'no-pending-external') { %>
+      <div class="mb-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-2 text-sm">✅ 모든 외부위원이 이미 서명을 완료했어요!</div>
+    <% } else if (locals.actionFlag === 'no-external') { %>
+      <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⚠️ 이 위원회에 외부위원이 없습니다.</div>
+    <% } %>
+
+    <div class="mb-5 border border-slate-200 rounded-xl p-4 bg-slate-50">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold text-slate-900 text-sm">① 회의록 파일 업로드 (PDF 또는 한글)</h3>
+        <span class="text-xs text-slate-500">최대 30MB</span>
+      </div>
+
+      <% if (meeting.uploaded_minutes_path) { %>
+        <div class="flex items-center justify-between bg-white border rounded-lg px-3 py-2 mb-2">
+          <div class="text-sm">
+            <span class="font-medium">📎 <%= meeting.uploaded_minutes_original_name %></span>
+            <span class="text-xs text-slate-500 ml-2">업로드: <%= meeting.uploaded_minutes_uploaded_at %></span>
+          </div>
+          <div class="flex gap-2">
+            <a href="/admin/meetings/<%= meeting.id %>/uploaded-minutes" class="text-xs border bg-white rounded px-2 py-1 hover:bg-slate-50">⬇ 다운로드</a>
+            <form method="POST" action="/admin/meetings/<%= meeting.id %>/minutes-delete" onsubmit="return confirm('업로드된 회의록을 삭제할까요?')">
+              <button class="text-xs border bg-white rounded px-2 py-1 hover:bg-rose-50 text-rose-600">🗑 삭제</button>
+            </form>
+          </div>
+        </div>
+      <% } %>
+
+      <form method="POST" action="/admin/meetings/<%= meeting.id %>/minutes-upload" enctype="multipart/form-data" class="flex items-center gap-2">
+        <input type="file" name="minutes_file" accept=".pdf,.hwp,.hwpx" required class="text-sm flex-1">
+        <button class="bg-slate-900 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">
+          <%= meeting.uploaded_minutes_path ? '📤 새 파일로 교체' : '📤 업로드' %>
+        </button>
       </form>
-      <form method="POST" action="/admin/meetings/<%= meeting.id %>/generate-pdf">
-        <button class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">📄 회의록 PDF 생성</button>
-      </form>
+      <p class="text-xs text-slate-500 mt-2">※ PDF로 올리시는 것을 권장합니다. 한글(.hwp/.hwpx)도 업로드/다운로드 가능합니다.</p>
     </div>
 
-    <table class="w-full text-sm">
-      <thead class="text-xs text-slate-500 border-b">
-        <tr><th class="py-2 text-left">위원</th><th class="text-left">상태</th><th class="text-left">서명 시각</th><th class="text-left">서명 링크</th></tr>
-      </thead>
-      <tbody>
-        <% members.forEach(m => { %>
-          <% const sig = signatures.find(s => s.member_id === m.id); %>
-          <% const t = tokens.find(tt => tt.member_id === m.id && tt.purpose === 'signature'); %>
-          <tr class="border-b last:border-b-0">
-            <td class="py-2 font-medium"><%= m.name %></td>
-            <td><% if (sig) { %><span class="badge badge-green">서명완료</span><% } else { %><span class="badge badge-gray">대기중</span><% } %></td>
-            <td class="text-xs text-slate-500"><%= sig ? sig.signed_at : '-' %></td>
-            <td>
-              <% if (t) { %>
-              <button onclick="navigator.clipboard.writeText('<%= baseUrl %>/sign/<%= t.token %>'); this.textContent='✓ 복사됨'" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">링크 복사</button>
-              <a href="/sign/<%= t.token %>" target="_blank" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">↗ 열기</a>
-              <% } %>
-            </td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
+    <% const externals = members.filter(m => m.type === 'external'); %>
+    <% const externalSigned = externals.filter(m => signatures.find(s => s.member_id === m.id)).length; %>
+    <% const externalPct = externals.length > 0 ? Math.round(externalSigned * 100 / externals.length) : 0; %>
+    <% const allExternalsSigned = externals.length > 0 && externalSigned === externals.length; %>
+
+    <div class="mb-4 border border-slate-200 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-slate-900 text-sm">② 외부위원 서명 링크 발송</h3>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-500">외부위원 <%= externals.length %>명</span>
+          <% if (externals.length > 0) { %>
+            <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
+              <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh(this.checked)">
+              <span>10초마다 자동 새로고침</span>
+            </label>
+          <% } %>
+        </div>
+      </div>
+
+      <% if (externals.length > 0) { %>
+        <div class="mb-3">
+          <div class="flex items-center justify-between text-xs mb-1">
+            <span class="font-semibold text-slate-700">실시간 서명 현황</span>
+            <span class="text-slate-600"><strong class="<%= allExternalsSigned ? 'text-emerald-700' : 'text-violet-700' %>"><%= externalSigned %></strong> / <%= externals.length %>명 서명 완료 (<%= externalPct %>%)</span>
+          </div>
+          <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+            <div class="h-2.5 rounded-full transition-all <%= allExternalsSigned ? 'bg-gradient-to-r from-emerald-400 to-emerald-600' : 'bg-gradient-to-r from-violet-400 to-violet-600' %>"
+                 style="width: <%= externalPct %>%"></div>
+          </div>
+        </div>
+      <% } %>
+
+      <% if (externals.length === 0) { %>
+        <p class="text-sm text-slate-500 py-2">이 위원회에 외부위원이 없습니다.</p>
+      <% } else { %>
+        <% const pendingExternals = externals.filter(m => !signatures.find(s => s.member_id === m.id)); %>
+        <div class="flex gap-2 mb-3 items-center flex-wrap">
+          <form method="POST" action="/admin/meetings/<%= meeting.id %>/request-external-signatures">
+            <button class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">📨 외부위원 전체에게 서명 요청 메일 발송</button>
+          </form>
+          <% if (pendingExternals.length > 0) { %>
+            <form method="POST" action="/admin/meetings/<%= meeting.id %>/remind-external-signatures"
+                  onsubmit="return confirm('아직 서명하지 않은 외부위원 <%= pendingExternals.length %>명에게 리마인드 메일을 보냅니다. 진행할까요?')">
+              <button class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                ⏰ 미서명자 <%= pendingExternals.length %>명에게 리마인드
+              </button>
+            </form>
+          <% } %>
+          <% if (!locals.smtpConfigured) { %>
+            <a href="/admin/settings/smtp" class="text-xs bg-amber-100 text-amber-900 border border-amber-300 rounded px-2 py-1">⚠️ SMTP 미설정 — 메일 자동 발송 불가</a>
+          <% } %>
+          <% if (!meeting.uploaded_minutes_path) { %>
+            <span class="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1">💡 회의록 파일을 먼저 업로드하면 메일에 다운로드 링크가 포함됩니다.</span>
+          <% } %>
+        </div>
+
+        <table class="w-full text-sm">
+          <thead class="text-xs text-slate-500 border-b">
+            <tr>
+              <th class="py-2 text-left">외부위원</th>
+              <th class="text-left">상태</th>
+              <th class="text-left">서명 시각</th>
+              <th class="text-left">서명 링크</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% externals.forEach(m => { %>
+              <% const sig = signatures.find(s => s.member_id === m.id); %>
+              <% const t = tokens.find(tt => tt.member_id === m.id && tt.purpose === 'signature'); %>
+              <tr class="border-b last:border-b-0">
+                <td class="py-2">
+                  <div class="font-medium"><%= m.name %></div>
+                  <div class="text-xs text-slate-500"><%= [m.affiliation, m.role].filter(Boolean).join(' / ') %></div>
+                </td>
+                <td>
+                  <% if (sig) { %><span class="badge badge-green">서명완료</span>
+                  <% } else { %><span class="badge badge-gray">대기중</span><% } %>
+                </td>
+                <td class="text-xs text-slate-500"><%= sig ? sig.signed_at : '-' %></td>
+                <td>
+                  <% if (t) { %>
+                    <div class="flex gap-1 flex-wrap items-center">
+                      <input type="text" readonly value="<%= baseUrl %>/sign/<%= t.token %>"
+                             onclick="this.select()"
+                             class="text-xs border rounded px-2 py-1 bg-slate-50 w-64 font-mono">
+                      <button onclick="navigator.clipboard.writeText('<%= baseUrl %>/sign/<%= t.token %>'); this.textContent='✓ 복사됨'; setTimeout(()=>this.textContent='📋 복사',1500)"
+                              class="text-xs border rounded px-2 py-1 hover:bg-slate-50">📋 복사</button>
+                      <a href="/sign/<%= t.token %>" target="_blank" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">↗ 미리보기</a>
+                    </div>
+                  <% } else { %>
+                    <span class="text-xs text-slate-400">위 버튼으로 발송하면 링크 생성</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <% if (externals.length > 0) { %>
+    <div class="mb-4 border border-slate-200 rounded-xl p-4 <%= allExternalsSigned ? 'bg-gradient-to-br from-emerald-50 to-blue-50' : 'bg-slate-50' %>">
+      <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <h3 class="font-semibold text-slate-900 text-sm">③ 최종 회의록 PDF (서명본)</h3>
+        <% if (locals.actionFlag === 'final-pdf-generated') { %>
+          <span class="text-xs text-emerald-700">✅ 방금 생성됨</span>
+        <% } else if (locals.actionFlag === 'final-pdf-err') { %>
+          <span class="text-xs text-rose-700">⚠️ 생성 실패: <%= locals.actionMsg %></span>
+        <% } %>
+      </div>
+
+      <% if (allExternalsSigned) { %>
+        <p class="text-sm text-emerald-900 mb-3">🎉 모든 외부위원 서명 완료! 업로드한 회의록 뒤에 서명 페이지가 자동으로 합쳐졌어요.</p>
+      <% } else if (externalSigned > 0) { %>
+        <p class="text-sm text-slate-700 mb-3">현재까지 서명된 <%= externalSigned %>명의 서명만 들어간 중간 PDF를 만들 수 있어요. 전원 완료 후 자동 재생성됩니다.</p>
+      <% } else { %>
+        <p class="text-sm text-slate-500 mb-3">아직 서명한 외부위원이 없어요. 첫 서명이 들어오면 PDF를 만들 수 있어요.</p>
+      <% } %>
+
+      <div class="flex gap-2 flex-wrap items-center">
+        <% if (meeting.final_pdf_path) { %>
+          <a href="/admin/meetings/<%= meeting.id %>/final-pdf"
+             class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-1.5">
+            📄 최종 PDF 다운로드
+          </a>
+          <a href="/admin/meetings/<%= meeting.id %>/final-pdf" target="_blank"
+             class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">↗ 새 창으로 미리보기</a>
+          <span class="text-xs text-slate-500">생성: <%= meeting.final_pdf_generated_at %></span>
+        <% } %>
+        <% if (externalSigned > 0) { %>
+          <form method="POST" action="/admin/meetings/<%= meeting.id %>/generate-final-pdf">
+            <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-semibold">
+              🔄 <%= meeting.final_pdf_path ? '다시 생성' : 'PDF 만들기' %> (현재 서명 기준)
+            </button>
+          </form>
+        <% } %>
+        <% if (meeting.uploaded_minutes_path && meeting.uploaded_minutes_original_name && /\.hwpx?$/i.test(meeting.uploaded_minutes_original_name)) { %>
+          <span class="text-xs bg-amber-100 text-amber-900 border border-amber-300 rounded px-2 py-1">⚠️ 한글(.hwp) 업로드: 최종 PDF는 "외부위원 서명 페이지만" 별도 PDF로 생성됩니다.</span>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+
+    <script>
+      let autoRefreshTimer = null;
+      function toggleAutoRefresh(on) {
+        if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+        if (on) {
+          autoRefreshTimer = setInterval(() => location.reload(), 10000);
+          try { sessionStorage.setItem('meeting_auto_refresh_<%= meeting.id %>', '1'); } catch(e) {}
+        } else {
+          try { sessionStorage.removeItem('meeting_auto_refresh_<%= meeting.id %>'); } catch(e) {}
+        }
+      }
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          if (sessionStorage.getItem('meeting_auto_refresh_<%= meeting.id %>') === '1') {
+            const cb = document.getElementById('auto-refresh-toggle');
+            if (cb) { cb.checked = true; toggleAutoRefresh(true); }
+          }
+        } catch(e) {}
+      });
+    </script>
+
+    <details class="border border-slate-200 rounded-xl p-4 text-sm bg-slate-50">
+      <summary class="cursor-pointer text-slate-600 hover:text-slate-900">▾ (참고) 기존 방식 — 텍스트 회의록 + PDF 생성 + 전체 위원 서명</summary>
+      <div class="mt-3">
+        <form method="POST" action="/admin/meetings/<%= meeting.id %>/minutes" class="mb-3">
+          <textarea name="minutes_text" rows="4" class="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="(선택) 회의록 텍스트"><%= meeting.minutes_text || '' %></textarea>
+          <button class="mt-2 bg-slate-700 text-white px-3 py-1.5 rounded text-xs">텍스트 저장</button>
+        </form>
+        <div class="flex gap-2">
+          <form method="POST" action="/admin/meetings/<%= meeting.id %>/request-signatures">
+            <button class="bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded text-xs">전체 위원 서명 요청</button>
+          </form>
+          <form method="POST" action="/admin/meetings/<%= meeting.id %>/generate-pdf">
+            <button class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-xs">자동 PDF 생성</button>
+          </form>
+          <% if (meeting.pdf_path) { %>
+            <a href="/admin/meetings/<%= meeting.id %>/pdf" class="bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded text-xs">📄 자동생성 PDF 다운로드</a>
+          <% } %>
+        </div>
+      </div>
+    </details>
   </section>
   <% } %>
 
@@ -380,6 +623,7 @@
                 reminder: ['badge-amber','리마인드'],
                 meeting_confirmed: ['badge-green','일정 확정'],
                 signature_request: ['badge-violet','서명 요청'],
+                signature_reminder: ['badge-amber','✍️ 서명 리마인드'],
                 ars_call: ['badge-red','📞 ARS 전화']
               }[n.type] || ['badge-gray', n.type]; %>
               <span class="badge <%= typeBadge[0] %>"><%= typeBadge[1] %></span>
