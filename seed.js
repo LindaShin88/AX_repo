@@ -92,6 +92,54 @@ async function seed() {
 
   console.log(`  ✓ 위원 총 ${c1Members.length + c2Members.length + c3Members.length}명 생성`);
 
+  // === 랜딩 페이지 위원 데모용 회의 + 토큰 ===
+  // (1) 일정 투표 데모 회의 (scheduling)
+  const demoVoteInfo = db.prepare(`
+    INSERT INTO meetings (committee_id, title, description, location, duration_minutes, status, schedule_constraints, notify_channels)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(cIds[0], '[데모] 위원 시점 일정 투표 체험',
+         '랜딩 페이지 방문자가 위원의 일정 응답 화면을 직접 클릭해볼 수 있는 데모 회의입니다.\n실제 회의에 영향을 주지 않습니다.',
+         '본관 회의실 301', 60, 'scheduling',
+         '{"window":{"start":"2026-06-01","end":"2026-06-05"}}', 'email');
+  const demoVoteMeetingId = demoVoteInfo.lastInsertRowid;
+
+  const demoVoteSlots = [
+    ['2026-06-01T10:00:00', '2026-06-01T11:00:00'],
+    ['2026-06-02T14:00:00', '2026-06-02T15:00:00'],
+    ['2026-06-03T10:00:00', '2026-06-03T11:00:00'],
+    ['2026-06-04T15:00:00', '2026-06-04T16:00:00'],
+    ['2026-06-05T10:00:00', '2026-06-05T11:00:00'],
+  ];
+  const insertDemoSlot = db.prepare('INSERT INTO meeting_slots (meeting_id, start_time, end_time, suggested_score) VALUES (?, ?, ?, 1.0)');
+  for (const [s, e] of demoVoteSlots) insertDemoSlot.run(demoVoteMeetingId, s, e);
+
+  const demoVoter = db.prepare('SELECT id FROM members WHERE committee_id = ? AND type = ? ORDER BY id LIMIT 1').get(cIds[0], 'faculty');
+  if (demoVoter) {
+    db.prepare(`INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'availability')`)
+      .run(demoVoter.id, demoVoteMeetingId, 'demo-avail-voter');
+  }
+  console.log(`  ✓ 데모 회의 #${demoVoteMeetingId} (위원 일정 투표 체험) 생성`);
+
+  // (2) 서명 데모 회의 (confirmed + 회의록 텍스트)
+  const demoSignInfo = db.prepare(`
+    INSERT INTO meetings (committee_id, title, description, location, duration_minutes, status, schedule_constraints, notify_channels, minutes_text)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(cIds[0], '[데모] 외부위원 서명 체험',
+         '랜딩 페이지 방문자가 외부위원의 전자서명 화면을 직접 그어볼 수 있는 데모 회의입니다.',
+         '본관 회의실 301', 60, 'confirmed',
+         '{"window":{"start":"2026-06-01","end":"2026-06-01"}}', 'email',
+         '[데모 회의록]\n\n일시: 2026. 6. 1. (월) 10:00\n장소: 본관 회의실 301\n\n안건\n1. 학사 운영 규정 개정안 심의\n2. 2026학년도 2학기 계획 검토\n\n결의 사항: 원안 가결\n\n※ 본 회의록은 랜딩 페이지 데모용입니다.');
+  const demoSignMeetingId = demoSignInfo.lastInsertRowid;
+  const demoSignSlotInfo = insertDemoSlot.run(demoSignMeetingId, '2026-06-01T10:00:00', '2026-06-01T11:00:00');
+  db.prepare(`UPDATE meetings SET confirmed_slot_id = ? WHERE id = ?`).run(demoSignSlotInfo.lastInsertRowid, demoSignMeetingId);
+
+  const demoSigner = db.prepare('SELECT id FROM members WHERE committee_id = ? AND type = ? ORDER BY id LIMIT 1').get(cIds[0], 'external');
+  if (demoSigner) {
+    db.prepare(`INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'signature')`)
+      .run(demoSigner.id, demoSignMeetingId, 'demo-sign-external');
+  }
+  console.log(`  ✓ 데모 회의 #${demoSignMeetingId} (외부위원 서명 체험) 생성`);
+
   console.log('\n✅ 시드 완료!\n');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('  서버 실행:    npm start');

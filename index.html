@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>위원회 운영 통합 자동화 플랫폼 | AX 프런티어 챌린지</title>
+  <meta name="description" content="대학 위원회 운영의 핵심 비효율(일정 조율·외부위원 서명 수집·회의록 작성)을 통합 자동화하는 SaaS 플랫폼">
+  <link rel="icon" type="image/png" href="https://committee-platform.onrender.com/img/hansung-logo.png">
+  <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Pretendard', 'system-ui', 'sans-serif'] },
+          animation: {
+            'fade-up': 'fadeUp 0.7s ease-out',
+            'fade-in': 'fadeIn 0.7s ease-out',
+          },
+          keyframes: {
+            fadeUp: { '0%': { opacity: 0, transform: 'translateY(20px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+            fadeIn: { '0%': { opacity: 0 }, '100%': { opacity: 1 } },
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body { font-family: 'Pretendard', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    .grain { background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 3px 3px; }
+    .gradient-text {
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .card-hover { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .card-hover:hover { transform: translateY(-6px); }
+    .scroll-fade { opacity: 0; transform: translateY(30px); transition: all 0.8s ease-out; }
+    .scroll-fade.visible { opacity: 1; transform: translateY(0); }
+    .number-tag { font-variant-numeric: tabular-nums; }
+    .badge-glow { box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2), 0 4px 14px rgba(99, 102, 241, 0.15); }
+    a[data-placeholder]:not([href]):not([data-placeholder=""]),
+    a[data-placeholder="true"] { cursor: not-allowed; }
+  </style>
+</head>
+<body class="bg-white text-slate-900">
+
+  <!-- ===== NAV ===== -->
+  <nav class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+      <a href="#top" class="inline-flex items-center gap-2.5 group">
+        <img src="https://committee-platform.onrender.com/img/hansung-logo.png"
+             alt="한성대학교" class="h-8 w-auto"
+             style="mix-blend-mode:multiply"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+        <span style="display:none" class="text-sm font-bold text-indigo-700">HSU</span>
+        <span class="h-6 w-px bg-slate-200"></span>
+        <span class="text-sm font-bold text-slate-800 hidden sm:inline">위원회 자동화 플랫폼</span>
+      </a>
+      <div class="flex items-center gap-2 text-xs">
+        <a href="https://github.com/LindaShin88/AX_repo" target="_blank"
+           class="hidden sm:inline-flex items-center text-slate-500 hover:text-slate-900 px-3 py-2 font-semibold transition">
+          GitHub
+        </a>
+        <button type="button" onclick="openMemberDemo()"
+           class="inline-flex items-center gap-1.5 border border-slate-300 text-slate-700 px-3.5 py-2 rounded-full hover:bg-slate-50 transition font-semibold">
+          위원 데모
+        </button>
+        <a href="https://committee-platform.onrender.com/admin/login" target="_blank"
+           class="inline-flex items-center gap-1.5 bg-slate-900 text-white px-3.5 py-2 rounded-full hover:bg-slate-700 transition font-semibold">
+          운영자 데모 →
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===== 위원 데모 MODAL ===== -->
+  <div id="demo-modal-backdrop" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60]" onclick="closeMemberDemo()"></div>
+  <div id="demo-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-[92vw] max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
+    <div class="px-6 pt-6 pb-3 flex items-center justify-between">
+      <div>
+        <div class="text-xs font-semibold text-indigo-600 tracking-widest uppercase mb-1">MEMBER VIEW</div>
+        <h3 class="text-lg font-bold text-slate-900">위원 시점 데모</h3>
+      </div>
+      <button type="button" onclick="closeMemberDemo()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">&times;</button>
+    </div>
+    <p class="px-6 pb-4 text-xs text-slate-500 leading-relaxed">
+      위원회 위원이 메일로 받은 링크를 클릭했을 때 보는 화면입니다.<br>로그인 없이 응답·서명할 수 있어요.
+    </p>
+    <div class="border-t border-slate-100 divide-y divide-slate-100">
+      <a href="https://committee-platform.onrender.com/avail/demo-avail-voter" target="_blank"
+         class="flex items-center gap-4 px-6 py-5 hover:bg-indigo-50/40 transition group">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center text-xl">🗳️</div>
+        <div class="flex-1">
+          <div class="font-bold text-slate-900">일정 투표 화면</div>
+          <div class="text-xs text-slate-500 mt-0.5">위원이 후보 일정 중 가능/불가능을 선택</div>
+        </div>
+        <svg class="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a href="https://committee-platform.onrender.com/sign/demo-sign-external" target="_blank"
+         class="flex items-center gap-4 px-6 py-5 hover:bg-rose-50/40 transition group">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 text-white flex items-center justify-center text-xl">✍️</div>
+        <div class="flex-1">
+          <div class="font-bold text-slate-900">서명 화면 (외부위원)</div>
+          <div class="text-xs text-slate-500 mt-0.5">회의록 미리보기 + 손글씨 전자서명</div>
+        </div>
+        <svg class="w-5 h-5 text-slate-300 group-hover:text-rose-500 group-hover:translate-x-1 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </div>
+    <div class="px-6 py-4 bg-slate-50 text-[11px] text-slate-500 leading-relaxed">
+      💡 <strong class="text-slate-700">팁:</strong> 실제 위원은 메일/SMS로 받은 1회용 링크로 접속합니다. 여기서는 데모용 토큰으로 같은 화면을 미리 볼 수 있어요.
+    </div>
+  </div>
+
+  <script>
+    function openMemberDemo() {
+      document.getElementById('demo-modal-backdrop').classList.remove('hidden');
+      document.getElementById('demo-modal').classList.remove('hidden');
+    }
+    function closeMemberDemo() {
+      document.getElementById('demo-modal-backdrop').classList.add('hidden');
+      document.getElementById('demo-modal').classList.add('hidden');
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMemberDemo(); });
+  </script>
+
+  <!-- ===== HERO ===== -->
+  <section id="top" class="relative pt-32 pb-20 overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-950">
+    <div class="absolute inset-0 grain opacity-50"></div>
+    <div class="absolute -top-40 -right-40 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl"></div>
+    <div class="absolute -bottom-40 -left-40 w-96 h-96 bg-violet-500/20 rounded-full blur-3xl"></div>
+
+    <div class="relative max-w-6xl mx-auto px-6">
+      <div class="animate-fade-up">
+        <div class="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-400/30 text-indigo-300 rounded-full px-3.5 py-1.5 text-xs font-semibold mb-8">
+          <span class="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-pulse"></span>
+          AX 프런티어 챌린지 · 생성형 AI 활용 행정 혁신 사례 발굴 대회
+        </div>
+
+        <h1 class="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.1] mb-6">
+          위원회 운영의 비효율,<br>
+          <span class="gradient-text">자동화로 해결합니다.</span>
+        </h1>
+
+        <p class="text-base sm:text-lg text-slate-300 max-w-2xl leading-relaxed mb-10">
+          일정 조율 2~3일 → <span class="text-white font-semibold">1.5시간</span><br class="sm:hidden">
+          외부위원 재방문 서명 → <span class="text-white font-semibold">메일 링크 1클릭</span><br>
+          대학 내 60여 개 위원회의 행정 흐름을 새롭게 설계했습니다.
+        </p>
+
+        <div class="flex flex-wrap gap-3">
+          <a href="https://committee-platform.onrender.com/admin/login" target="_blank"
+             class="inline-flex items-center gap-2 bg-white text-slate-900 px-5 py-3 rounded-full font-semibold text-sm hover:bg-slate-100 transition">
+            🛠 운영자 데모 체험
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <button type="button" onclick="openMemberDemo()"
+             class="inline-flex items-center gap-2 bg-indigo-600/90 hover:bg-indigo-500 text-white border border-indigo-400/40 px-5 py-3 rounded-full font-semibold text-sm transition">
+            🗳 위원 시점 데모
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <a href="#cards" class="inline-flex items-center gap-2 text-white border border-white/20 px-5 py-3 rounded-full font-semibold text-sm hover:bg-white/5 transition">
+            자세히 보기
+          </a>
+        </div>
+      </div>
+
+      <!-- Hero stats -->
+      <div class="mt-20 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+        <div class="border-l-2 border-indigo-400 pl-4">
+          <div class="text-3xl sm:text-4xl font-bold text-white number-tag">97<span class="text-indigo-300 text-2xl">%</span></div>
+          <div class="text-xs text-slate-400 mt-1">처리 시간 단축</div>
+        </div>
+        <div class="border-l-2 border-violet-400 pl-4">
+          <div class="text-3xl sm:text-4xl font-bold text-white number-tag">60<span class="text-violet-300 text-2xl">+</span></div>
+          <div class="text-xs text-slate-400 mt-1">대상 위원회 수</div>
+        </div>
+        <div class="border-l-2 border-pink-400 pl-4">
+          <div class="text-3xl sm:text-4xl font-bold text-white number-tag">0<span class="text-pink-300 text-2xl">click</span></div>
+          <div class="text-xs text-slate-400 mt-1">외부위원 재방문</div>
+        </div>
+        <div class="border-l-2 border-emerald-400 pl-4">
+          <div class="text-3xl sm:text-4xl font-bold text-white number-tag">1.9<span class="text-emerald-300 text-2xl">s</span></div>
+          <div class="text-xs text-slate-400 mt-1">시간표 자동 수집</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CARDS ===== -->
+  <section id="cards" class="py-24 bg-slate-50">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="scroll-fade max-w-2xl mb-14">
+        <div class="text-xs font-semibold text-indigo-600 tracking-widest uppercase mb-3">EXPLORE</div>
+        <h2 class="text-3xl sm:text-4xl font-bold tracking-tight">자료 모음</h2>
+        <p class="text-slate-500 mt-3">이 프로젝트의 기획 의도부터 구현 결과까지 한곳에서.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        <!-- CARD 1: 서비스 소개 -->
+        <a href="#intro" class="card-hover scroll-fade group block bg-white border border-slate-200 rounded-2xl p-7 hover:border-indigo-300 hover:shadow-lg">
+          <div class="flex items-start justify-between mb-6">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-2xl shadow-lg badge-glow">
+              📋
+            </div>
+            <span class="text-xs text-slate-400 group-hover:text-indigo-500 transition">01 / 04</span>
+          </div>
+          <h3 class="text-xl font-bold mb-2 group-hover:text-indigo-600 transition">서비스 소개</h3>
+          <p class="text-sm text-slate-500 leading-relaxed mb-5">
+            기획 배경, 문제 정의, 핵심 가치, 주요 기능, 기술 스택까지<br>
+            본 프로젝트의 전체 여정을 정리한 소개 페이지.
+          </p>
+          <div class="text-sm font-semibold text-indigo-600 inline-flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
+            자세히 보기
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </a>
+
+        <!-- CARD 2: 시연 영상 -->
+        <a href="#" data-placeholder="true" data-card="video"
+           onclick="if(!this.dataset.href){event.preventDefault(); alert('시연 영상은 곧 공개됩니다.');} else { window.open(this.dataset.href,'_blank'); event.preventDefault();}"
+           class="card-hover scroll-fade group block bg-white border border-slate-200 rounded-2xl p-7 hover:border-rose-300 hover:shadow-lg">
+          <div class="flex items-start justify-between mb-6">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white text-2xl shadow-lg">
+              🎬
+            </div>
+            <span class="text-xs text-amber-500 font-semibold inline-flex items-center gap-1">
+              <span class="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse"></span>
+              준비 중
+            </span>
+          </div>
+          <h3 class="text-xl font-bold mb-2 group-hover:text-rose-600 transition">시연 영상</h3>
+          <p class="text-sm text-slate-500 leading-relaxed mb-5">
+            회의 생성부터 위원 응답·자동 일정 확정·전자서명·최종 PDF 생성까지<br>
+            전체 흐름을 한 번에 볼 수 있는 데모 영상.
+          </p>
+          <div class="text-sm font-semibold text-rose-600 inline-flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
+            YouTube에서 시청
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </a>
+
+        <!-- CARD 3: 결과보고서 -->
+        <a href="#" data-placeholder="true" data-card="report"
+           onclick="if(!this.dataset.href){event.preventDefault(); alert('결과보고서는 곧 업로드됩니다.');} else { window.open(this.dataset.href,'_blank'); event.preventDefault();}"
+           class="card-hover scroll-fade group block bg-white border border-slate-200 rounded-2xl p-7 hover:border-emerald-300 hover:shadow-lg">
+          <div class="flex items-start justify-between mb-6">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-2xl shadow-lg">
+              📊
+            </div>
+            <span class="text-xs text-amber-500 font-semibold inline-flex items-center gap-1">
+              <span class="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse"></span>
+              준비 중
+            </span>
+          </div>
+          <h3 class="text-xl font-bold mb-2 group-hover:text-emerald-600 transition">결과보고서</h3>
+          <p class="text-sm text-slate-500 leading-relaxed mb-5">
+            문제 정의, UX 리서치, 기술적 구현, 정량 효과 분석까지<br>
+            본 프로젝트의 완성 보고서 (PPTX).
+          </p>
+          <div class="text-sm font-semibold text-emerald-600 inline-flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
+            Google Drive에서 열기
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </a>
+
+        <!-- CARD 4: 소스코드 -->
+        <a href="https://github.com/LindaShin88/AX_repo" target="_blank"
+           class="card-hover scroll-fade group block bg-white border border-slate-200 rounded-2xl p-7 hover:border-slate-700 hover:shadow-lg">
+          <div class="flex items-start justify-between mb-6">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-white shadow-lg">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.4 3-.405 1.02.005 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+            </div>
+            <span class="text-xs text-slate-400 group-hover:text-slate-700 transition">04 / 04</span>
+          </div>
+          <h3 class="text-xl font-bold mb-2 group-hover:text-slate-900 transition">소스코드</h3>
+          <p class="text-sm text-slate-500 leading-relaxed mb-5">
+            Node.js + Express + SQLite 기반 풀스택 코드.<br>
+            한성대 시간표 크롤러·디렉토리 조회 모듈 포함.
+          </p>
+          <div class="text-sm font-semibold text-slate-900 inline-flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
+            GitHub 저장소
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </a>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== INTRO: 서비스 소개 ===== -->
+  <section id="intro" class="py-24 bg-white">
+    <div class="max-w-6xl mx-auto px-6">
+
+      <!-- Section title -->
+      <div class="scroll-fade max-w-3xl mb-20">
+        <div class="text-xs font-semibold text-indigo-600 tracking-widest uppercase mb-3">SERVICE</div>
+        <h2 class="text-4xl sm:text-5xl font-bold tracking-tight leading-tight">
+          기존 2~3일이 걸리던 회의 일정 조율을<br>
+          <span class="gradient-text">1.5시간 만에</span> 끝냅니다.
+        </h2>
+      </div>
+
+      <!-- Problem -->
+      <div class="scroll-fade mb-20">
+        <div class="grid md:grid-cols-12 gap-10 items-start">
+          <div class="md:col-span-4">
+            <div class="text-xs font-bold text-rose-500 tracking-widest uppercase mb-2">PROBLEM</div>
+            <h3 class="text-2xl font-bold mb-3">기존 위원회 운영의 4가지 병목</h3>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              대학 본부·단대·학과 단위 위원회 60여 개. 매 학기마다 반복되는 비효율은 운영 담당자·교원·외부위원 모두에게 누적됩니다.
+            </p>
+          </div>
+          <div class="md:col-span-8 grid sm:grid-cols-2 gap-4">
+            <div class="border border-slate-200 rounded-2xl p-6 hover:border-rose-200 transition">
+              <div class="text-3xl mb-3">📞</div>
+              <div class="font-bold text-slate-900 mb-1.5">일정 조율</div>
+              <p class="text-xs text-slate-500 leading-relaxed">위원 7~15명에게 일일이 전화·메일·문자로 가능 시간을 받고, 엑셀에 받아 적어 최적 시간 선정</p>
+            </div>
+            <div class="border border-slate-200 rounded-2xl p-6 hover:border-rose-200 transition">
+              <div class="text-3xl mb-3">📅</div>
+              <div class="font-bold text-slate-900 mb-1.5">시간표 확인</div>
+              <p class="text-xs text-slate-500 leading-relaxed">교원의 강의 시간을 학사 시스템에서 한 명씩 직접 조회. 트랙·학과 여러 곳 교차 검색 필요</p>
+            </div>
+            <div class="border border-slate-200 rounded-2xl p-6 hover:border-rose-200 transition">
+              <div class="text-3xl mb-3">✍️</div>
+              <div class="font-bold text-slate-900 mb-1.5">외부위원 서명</div>
+              <p class="text-xs text-slate-500 leading-relaxed">회의록 인쇄 → 외부위원에게 우편/방문 요청 → 직접 서명 → 회수 → 스캔. 평균 3~5일 소요</p>
+            </div>
+            <div class="border border-slate-200 rounded-2xl p-6 hover:border-rose-200 transition">
+              <div class="text-3xl mb-3">📄</div>
+              <div class="font-bold text-slate-900 mb-1.5">회의록 정리</div>
+              <p class="text-xs text-slate-500 leading-relaxed">참석 위원 명단·서명·일시·장소를 매 회의마다 수기로 정리하여 최종 PDF 보관</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Solution / Core values -->
+      <div class="scroll-fade mb-20">
+        <div class="grid md:grid-cols-12 gap-10 items-start">
+          <div class="md:col-span-4">
+            <div class="text-xs font-bold text-indigo-600 tracking-widest uppercase mb-2">SOLUTION</div>
+            <h3 class="text-2xl font-bold mb-3">4가지 핵심 가치</h3>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              운영 담당자의 처리 동선, 일반 위원·외부위원의 응답 부담을 모두 줄이는 방향으로 흐름을 재설계했습니다.
+            </p>
+          </div>
+          <div class="md:col-span-8 space-y-4">
+            <div class="bg-gradient-to-r from-indigo-50 to-white border border-indigo-100 rounded-2xl p-6 flex items-start gap-5">
+              <div class="text-2xl">⚡</div>
+              <div class="flex-1">
+                <div class="font-bold mb-1.5">운영자 1.5시간 처리</div>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                  회의 정보 입력 → 시스템이 후보 일정·시간표 충돌·메일 발송·응답 집계·PDF 생성을 모두 자동화.
+                  운영 담당자 개입은 <strong class="text-slate-900">시작 + 확정</strong> 두 번뿐.
+                </p>
+              </div>
+            </div>
+            <div class="bg-gradient-to-r from-violet-50 to-white border border-violet-100 rounded-2xl p-6 flex items-start gap-5">
+              <div class="text-2xl">🔗</div>
+              <div class="flex-1">
+                <div class="font-bold mb-1.5">일반 위원 로그인 불필요</div>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                  메일·문자로 받은 <strong class="text-slate-900">1회용 응답 링크</strong>를 클릭하면 바로 응답 화면.
+                  계정 등록·앱 설치·암호 입력 모두 없음.
+                </p>
+              </div>
+            </div>
+            <div class="bg-gradient-to-r from-emerald-50 to-white border border-emerald-100 rounded-2xl p-6 flex items-start gap-5">
+              <div class="text-2xl">📡</div>
+              <div class="flex-1">
+                <div class="font-bold mb-1.5">한성대 시간표 자동 인식</div>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                  공개 시간표 페이지를 <strong class="text-slate-900">113개 전공 병렬 크롤링</strong>(약 1.9초)하여
+                  교원의 강의와 겹치는 후보 시간은 처음부터 제외.
+                </p>
+              </div>
+            </div>
+            <div class="bg-gradient-to-r from-rose-50 to-white border border-rose-100 rounded-2xl p-6 flex items-start gap-5">
+              <div class="text-2xl">✍️</div>
+              <div class="flex-1">
+                <div class="font-bold mb-1.5">외부위원 재방문 제로</div>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                  메일 링크에서 회의록 미리보기 + <strong class="text-slate-900">손글씨 전자서명</strong>까지 한 번에.
+                  서명 일자 자동 기록 → 최종 PDF에 자동 첨부.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 step flow -->
+      <div class="scroll-fade mb-20">
+        <div class="text-xs font-bold text-indigo-600 tracking-widest uppercase mb-2">USER FLOW</div>
+        <h3 class="text-2xl font-bold mb-10">4단계로 끝나는 회의 운영</h3>
+
+        <div class="relative">
+          <div class="hidden md:block absolute top-7 left-7 right-7 h-px bg-gradient-to-r from-indigo-300 via-violet-300 to-pink-300"></div>
+          <div class="grid md:grid-cols-4 gap-6 relative">
+            <div class="bg-white border border-slate-200 rounded-2xl p-5">
+              <div class="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg mb-3">01</div>
+              <div class="font-bold mb-1">회의 생성</div>
+              <p class="text-xs text-slate-500 leading-relaxed">위원회 선택 → 회의 정보 입력. 후보 일정 자동 생성 + 시간표 충돌 회피.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-5">
+              <div class="w-14 h-14 rounded-2xl bg-violet-100 text-violet-700 flex items-center justify-center font-bold text-lg mb-3">02</div>
+              <div class="font-bold mb-1">위원 응답</div>
+              <p class="text-xs text-slate-500 leading-relaxed">전체 위원에게 응답 링크 자동 발송. 폰·PC 어디서나 1분 안에 응답.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-5">
+              <div class="w-14 h-14 rounded-2xl bg-pink-100 text-pink-700 flex items-center justify-center font-bold text-lg mb-3">03</div>
+              <div class="font-bold mb-1">일정 확정</div>
+              <p class="text-xs text-slate-500 leading-relaxed">전원 응답 + 단일 최고 → 자동 확정. 동률·정족수 미충족 → 운영자 선택.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-5">
+              <div class="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg mb-3">04</div>
+              <div class="font-bold mb-1">서명·PDF</div>
+              <p class="text-xs text-slate-500 leading-relaxed">외부위원 전자서명 → 회의록 + 서명 페이지 자동 병합 → 최종 PDF.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature highlights -->
+      <div class="scroll-fade mb-20">
+        <div class="text-xs font-bold text-indigo-600 tracking-widest uppercase mb-2">DETAILS</div>
+        <h3 class="text-2xl font-bold mb-10">개발하면서 풀어낸 디테일</h3>
+
+        <div class="grid md:grid-cols-3 gap-5">
+          <div class="border border-slate-200 rounded-2xl p-6 hover:border-indigo-200 transition">
+            <div class="text-xs text-indigo-600 font-semibold mb-2">한성대 디렉토리 연동</div>
+            <div class="font-bold mb-2">교원 이메일 자동 채우기</div>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              이름만 입력해도 한성대 통합검색에서 이메일·소속·사번 자동 입력.
+              동명이인은 전화번호로 자동 구분, 같은 사람의 여러 소속은 자동 병합.
+            </p>
+          </div>
+
+          <div class="border border-slate-200 rounded-2xl p-6 hover:border-violet-200 transition">
+            <div class="text-xs text-violet-600 font-semibold mb-2">스케줄링 알고리즘</div>
+            <div class="font-bold mb-2">날짜 × 시간 다양성 보장</div>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              후보 일정을 추천할 때 같은 날짜·같은 시간이 몰리지 않도록
+              그리디 방식으로 다양성을 우선 배치. 시간표 충돌은 점수가 아닌 사전 필터링으로 제거.
+            </p>
+          </div>
+
+          <div class="border border-slate-200 rounded-2xl p-6 hover:border-emerald-200 transition">
+            <div class="text-xs text-emerald-600 font-semibold mb-2">자동 확정 정책</div>
+            <div class="font-bold mb-2">전원 응답 → 즉시 확정</div>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              마지막 위원의 응답이 들어오는 순간 최고 가능 슬롯이 단일하면 자동으로 확정.
+              여러 슬롯 동률이면 운영자에게 선택 알림 메일 + 관리자 페이지 링크 발송.
+            </p>
+          </div>
+
+          <div class="border border-slate-200 rounded-2xl p-6 hover:border-pink-200 transition">
+            <div class="text-xs text-pink-600 font-semibold mb-2">전자서명 시스템</div>
+            <div class="font-bold mb-2">회의록 본문 + 서명 자동 병합</div>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              업로드된 PDF 회의록 뒤에 외부위원 서명 페이지를 자동으로 붙여 단일 PDF로 생성.
+              한글(.hwp) 업로드 시 안내 페이지 + 서명 페이지로 별도 결합.
+            </p>
+          </div>
+
+          <div class="border border-slate-200 rounded-2xl p-6 hover:border-amber-200 transition">
+            <div class="text-xs text-amber-600 font-semibold mb-2">알림 채널</div>
+            <div class="font-bold mb-2">메일 + SMS 복사용 텍스트</div>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              이메일은 SMTP로 자동 발송, SMS는 발송용 텍스트를 운영자가 복사해서
+              문자/카톡으로 전송. 일정 확정 시 SMS 텍스트 팝업 자동 노출.
+            </p>
+          </div>
+
+          <div class="border border-slate-200 rounded-2xl p-6 hover:border-sky-200 transition">
+            <div class="text-xs text-sky-600 font-semibold mb-2">위원 4-type 분류</div>
+            <div class="font-bold mb-2">교원·직원·학생·외부위원</div>
+            <p class="text-sm text-slate-500 leading-relaxed">
+              위원 유형별로 입력 항목·시간표 자동 연결·서명 대상 여부가 다름.
+              교원만 시간표 크롤링, 외부위원만 전자서명 요청 대상.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tech stack -->
+      <div class="scroll-fade mb-12">
+        <div class="text-xs font-bold text-indigo-600 tracking-widest uppercase mb-2">TECH STACK</div>
+        <h3 class="text-2xl font-bold mb-8">기술 스택</h3>
+
+        <div class="grid sm:grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div class="border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-400 mb-1">런타임</div>
+            <div class="font-semibold">Node.js 22 LTS</div>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-400 mb-1">웹 프레임워크</div>
+            <div class="font-semibold">Express 5</div>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-400 mb-1">DB</div>
+            <div class="font-semibold">SQLite (better-sqlite3)</div>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-400 mb-1">템플릿 / UI</div>
+            <div class="font-semibold">EJS + TailwindCSS</div>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-400 mb-1">서명 / PDF</div>
+            <div class="font-semibold">signature_pad · pdf-lib · PDFKit</div>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-400 mb-1">메일 발송</div>
+            <div class="font-semibold">Nodemailer (SMTP)</div>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-400 mb-1">시간표 연동</div>
+            <div class="font-semibold">axios + iconv-lite (EUC-KR)</div>
+          </div>
+          <div class="border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-400 mb-1">배포</div>
+            <div class="font-semibold">Render (Web Service)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="scroll-fade bg-gradient-to-br from-slate-900 to-indigo-900 rounded-3xl p-10 sm:p-14 text-center text-white">
+        <h3 class="text-2xl sm:text-3xl font-bold mb-3">직접 사용해보시고 판단해주세요.</h3>
+        <p class="text-slate-300 text-sm sm:text-base mb-7">운영자 시점과 위원 시점, 두 가지 흐름을 모두 체험할 수 있습니다.</p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <a href="https://committee-platform.onrender.com/admin/login" target="_blank"
+             class="inline-flex items-center gap-2 bg-white text-slate-900 px-6 py-3.5 rounded-full font-semibold hover:bg-slate-100 transition">
+            🛠 운영자 데모
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <button type="button" onclick="openMemberDemo()"
+             class="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-6 py-3.5 rounded-full font-semibold transition">
+            🗳 위원 시점 데모
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="text-xs text-slate-400 mt-5">
+          운영자 로그인: <code class="bg-white/10 px-2 py-0.5 rounded">haksa1</code> / <code class="bg-white/10 px-2 py-0.5 rounded">demo1234</code>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="bg-slate-950 text-slate-400 py-12">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <img src="https://committee-platform.onrender.com/img/hansung-logo.png" alt="한성대학교" class="h-7 w-auto" style="mix-blend-mode:screen; filter: invert(1) grayscale(1) brightness(1.2)" onerror="this.style.display='none'">
+          <div>
+            <div class="text-sm font-semibold text-white">위원회 운영 통합 자동화 플랫폼</div>
+            <div class="text-xs">AX 프런티어 챌린지 출품작 · 한성대학교</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-4 text-xs">
+          <a href="https://github.com/LindaShin88/AX_repo" target="_blank" class="hover:text-white transition">GitHub</a>
+          <a href="https://committee-platform.onrender.com/admin/login" target="_blank" class="hover:text-white transition">데모</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ===== SCROLL TO TOP BUTTON ===== -->
+  <button id="scroll-top-btn" type="button" onclick="window.scrollTo({top:0, behavior:'smooth'})"
+          aria-label="맨 위로"
+          class="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-slate-900/90 hover:bg-slate-700 text-white shadow-lg backdrop-blur-md flex items-center justify-center opacity-0 pointer-events-none transition-all duration-300">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-5 h-5">
+      <path d="M18 15l-6-6-6 6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+  <script>
+    (function(){
+      const btn = document.getElementById('scroll-top-btn');
+      function update() {
+        if (window.scrollY > 400) {
+          btn.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-3');
+          btn.classList.add('opacity-100');
+        } else {
+          btn.classList.add('opacity-0', 'pointer-events-none');
+          btn.classList.remove('opacity-100');
+        }
+      }
+      window.addEventListener('scroll', update, { passive: true });
+      update();
+    })();
+  </script>
+
+  <script>
+    // Scroll fade-in
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+    }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+    document.querySelectorAll('.scroll-fade').forEach(el => observer.observe(el));
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', (e) => {
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      });
+    });
+
+    // ========================================
+    // 🔧 링크 업데이트 위치 (시연 영상 / 결과보고서)
+    // ========================================
+    // 영상 / 보고서가 준비되면 아래 두 줄의 빈 문자열을 실제 URL로 교체하세요.
+    // 다른 코드는 손댈 필요 없음. 페이지 새로고침하면 자동으로 클릭 가능 상태로 전환됩니다.
+    // ========================================
+    const LINKS = {
+      video:  '',  // 예: 'https://youtu.be/abc123XYZ'
+      report: '',  // 예: 'https://drive.google.com/file/d/.../view'
+    };
+
+    Object.entries(LINKS).forEach(([key, url]) => {
+      const el = document.querySelector(`a[data-card="${key}"]`);
+      if (!el) return;
+      if (url) {
+        el.dataset.href = url;
+        el.setAttribute('href', url);
+        el.removeAttribute('data-placeholder');
+        el.setAttribute('target', '_blank');
+        const badge = el.querySelector('span.text-amber-500');
+        if (badge) badge.remove();
+      }
+    });
+  </script>
+
+</body>
+</html>
