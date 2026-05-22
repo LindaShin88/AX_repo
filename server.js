@@ -56,7 +56,7 @@ app.use(session({
 
 app.use(attachAdmin);
 
-app.get('/', (req, res) => res.redirect('/admin'));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 app.use('/admin', authRoutes);
 app.use('/admin/users', superAdminRoutes);
