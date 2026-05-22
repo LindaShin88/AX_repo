@@ -11,6 +11,24 @@ function formatKoreanDateTime(dt) {
   return `${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.(${DAY_KO[d.getDay()]}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function formatAgendaLines(description) {
+  if (!description || !description.trim()) return [];
+  const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+  const items = description.split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(s => s.replace(/^[\d①-⑳]+\s*[.)]\s*/, '').replace(/^[①-⑳]\s*/, '').replace(/^[•\-·]\s*/, '').trim())
+    .filter(Boolean);
+  if (items.length === 0) return [];
+  if (items.length === 1) return [`- 안건 : ${items[0]}`];
+  const out = ['- 안건'];
+  items.forEach((item, i) => {
+    const marker = i < CIRCLED.length ? CIRCLED[i] : `(${i+1})`;
+    out.push(`  ${marker} ${item}`);
+  });
+  return out;
+}
+
 function buildConfirmedAnnouncement(meeting, slot) {
   const when = formatKoreanDateTime(slot.start_time);
   const lines = [
@@ -20,12 +38,7 @@ function buildConfirmedAnnouncement(meeting, slot) {
     `- 일시: ${when}`,
     `- 장소: ${meeting.location || '추후 공지'}`,
   ];
-  if (meeting.description && meeting.description.trim()) {
-    lines.push(`- 안건`);
-    for (const al of meeting.description.split(/\r?\n/).map(s => s.trim()).filter(Boolean)) {
-      lines.push(al);
-    }
-  }
+  lines.push(...formatAgendaLines(meeting.description));
   lines.push(``, `참석 부탁드립니다.`, `감사합니다.`);
   return lines.join('\n');
 }

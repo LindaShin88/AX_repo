@@ -13,18 +13,72 @@
       <strong><%= token.member_name %></strong><% if (token.role) { %> · <%= token.role %><% } %> 님 회의록 확인 및 서명
     </div>
     <% if (slot) { %>
-      <div class="mt-2 text-xs text-slate-500">📅 <%= slot.start_time %> · 📍 <%= token.location || '-' %></div>
+      <%
+        const _d = new Date(typeof slot.start_time === 'string' ? slot.start_time.replace(' ', 'T') : slot.start_time);
+        const _dayKo = ['일','월','화','수','목','금','토'];
+        const _meetingDate = isNaN(_d.getTime())
+          ? String(slot.start_time).slice(0,10)
+          : `${_d.getFullYear()}. ${_d.getMonth()+1}. ${_d.getDate()}.(${_dayKo[_d.getDay()]})`;
+      %>
+      <div class="mt-2 text-xs text-slate-500">📅 <%= _meetingDate %> · 📍 <%= token.location || '-' %></div>
     <% } %>
   </div>
 
   <% if (token.uploaded_minutes_path) { %>
+  <%
+    const _origName = String(token.uploaded_minutes_original_name || '');
+    const _ext = (_origName.match(/\.([^.]+)$/) || [,''])[1].toLowerCase();
+    const _isPdf = _ext === 'pdf';
+    const _isHwp = _ext === 'hwp' || _ext === 'hwpx';
+  %>
   <div class="bg-white rounded-2xl border p-6 mb-4">
-    <h3 class="font-bold text-slate-900 mb-2">📄 회의록 파일</h3>
-    <p class="text-xs text-slate-500 mb-3">아래 버튼을 눌러 회의록을 먼저 확인하신 후 서명해주세요.</p>
-    <a href="/minutes/<%= token.token %>" target="_blank"
-       class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-xl font-semibold text-sm">
-      ⬇ 회의록 다운로드 (<%= token.uploaded_minutes_original_name %>)
-    </a>
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-slate-900">📄 회의록 미리보기</h3>
+      <button type="button" onclick="openMinutesPreview()" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">↗ 새창에서 크게 보기</button>
+    </div>
+    <p class="text-xs text-slate-500 mb-3">회의록을 확인하신 후 아래에 서명해주세요. (파일명: <%= _origName %>)</p>
+
+    <% if (_isPdf) { %>
+      <iframe id="minutes-iframe" src="/minutes-inline/<%= token.token %>" class="w-full border rounded-lg" style="height:520px;"></iframe>
+    <% } else if (_isHwp) { %>
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
+        <p class="text-amber-900">⚠️ 한글 파일(<code><%= _ext %></code>)은 브라우저에서 바로 표시할 수 없어요.</p>
+        <p class="text-amber-800 text-xs mt-2">다운로드해서 한글 프로그램 또는 한컴오피스 뷰어로 열어 확인 부탁드립니다.</p>
+        <a href="/minutes/<%= token.token %>" target="_blank"
+           class="inline-flex items-center gap-2 mt-3 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold text-sm">
+          ⬇ 한글 파일 다운로드 (<%= _origName %>)
+        </a>
+      </div>
+    <% } else { %>
+      <a href="/minutes/<%= token.token %>" target="_blank"
+         class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-xl font-semibold text-sm">
+        ⬇ 회의록 다운로드 (<%= _origName %>)
+      </a>
+    <% } %>
+
+    <% if (_isPdf) { %>
+    <div id="minutes-modal-backdrop" class="hidden fixed inset-0 bg-black/70 z-40" onclick="closeMinutesPreview()"></div>
+    <div id="minutes-modal" class="hidden fixed inset-4 z-50 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between p-3 border-b">
+        <div class="font-semibold">📄 <%= _origName %></div>
+        <button type="button" onclick="closeMinutesPreview()" class="text-slate-400 hover:text-slate-700 text-2xl">×</button>
+      </div>
+      <iframe id="minutes-modal-iframe" src="" class="flex-1 w-full"></iframe>
+    </div>
+    <script>
+      function openMinutesPreview() {
+        const mod = document.getElementById('minutes-modal');
+        document.getElementById('minutes-modal-iframe').src = '/minutes-inline/<%= token.token %>';
+        document.getElementById('minutes-modal-backdrop').classList.remove('hidden');
+        mod.classList.remove('hidden');
+      }
+      function closeMinutesPreview() {
+        document.getElementById('minutes-modal').classList.add('hidden');
+        document.getElementById('minutes-modal-backdrop').classList.add('hidden');
+        document.getElementById('minutes-modal-iframe').src = '';
+      }
+    </script>
+    <% } %>
   </div>
   <% } %>
 
@@ -40,8 +94,14 @@
     <p class="text-xs text-slate-500 mb-3">아래 영역에 마우스 또는 손가락(터치)으로 서명해주세요.</p>
 
     <% if (existing) { %>
+      <%
+        const _sd = new Date(typeof existing.signed_at === 'string' ? existing.signed_at.replace(' ', 'T') : existing.signed_at);
+        const _signedDate = isNaN(_sd.getTime())
+          ? String(existing.signed_at || '').slice(0,10)
+          : `${_sd.getFullYear()}. ${_sd.getMonth()+1}. ${_sd.getDate()}.`;
+      %>
       <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3 text-sm">
-        ✓ 이미 <%= existing.signed_at %>에 서명하셨습니다. 다시 서명하면 기존 서명이 갱신됩니다.
+        ✓ 이미 <%= _signedDate %>에 서명하셨습니다. 다시 서명하면 기존 서명이 갱신됩니다.
       </div>
     <% } %>
 
@@ -54,9 +114,6 @@
     <button type="submit" class="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl">서명 제출</button>
   </form>
 
-  <p class="text-xs text-slate-400 mt-3 text-center">
-    서명 시각, IP, 접속기기 정보가 함께 기록되어 위변조를 방지합니다.
-  </p>
 </main>
 
 <script>

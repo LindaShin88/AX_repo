@@ -16,8 +16,8 @@ function parseConstraints(raw) {
 function defaultConstraints() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 13);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  if (end < start) end.setTime(start.getTime() + 13 * 24 * 60 * 60 * 1000);
   const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   return {
     window: { start: fmtDate(start), end: fmtDate(end) },
@@ -148,7 +148,7 @@ async function scoreSlotsAgainstMembers(slots, members, opts = {}) {
 }
 
 async function suggestTopSlots(members, opts = {}) {
-  const topN = opts.topN || 6;
+  const topN = opts.topN === null || opts.topN === undefined ? Infinity : opts.topN;
   const duration = opts.durationMinutes || 60;
   const candidates = generateCandidatesFromConstraints(opts.constraints, duration);
   if (candidates.length === 0) return { slots: [], debug: { totalCandidates: 0, facultyFiltered: 0, fallback: false } };
@@ -175,22 +175,35 @@ async function suggestTopSlots(members, opts = {}) {
   const scored = await scoreSlotsAgainstMembers(workingSet, members, { referenceDate: opts.referenceDate, precomputedTimetables: allTimetables });
   scored.sort((a, b) => b.score - a.score || a.start.localeCompare(b.start));
 
-  const byDate = new Map();
-  for (const s of scored) {
-    const date = s.start.slice(0, 10);
-    if (!byDate.has(date)) byDate.set(date, []);
-    byDate.get(date).push(s);
-  }
-  const dates = [...byDate.keys()];
+  const available = scored.slice();
   const picked = [];
-  let perDate = 1;
-  while (picked.length < topN && dates.some(d => byDate.get(d).length >= perDate)) {
-    for (const d of dates) {
-      if (picked.length >= topN) break;
-      const list = byDate.get(d);
-      if (list.length >= perDate) picked.push(list[perDate - 1]);
+  const dateCount = new Map();
+  const hourCount = new Map();
+  while (picked.length < topN && available.length > 0) {
+    let bestIdx = -1;
+    let bestKey = null;
+    for (let i = 0; i < available.length; i++) {
+      const s = available[i];
+      const date = s.start.slice(0, 10);
+      const hour = s.start.slice(11, 13);
+      const dc = dateCount.get(date) || 0;
+      const hc = hourCount.get(hour) || 0;
+      const diversity = -(dc * 2 + hc);
+      const key = [diversity, s.score, -new Date(s.start.replace(' ', 'T')).getTime()];
+      if (!bestKey || key[0] > bestKey[0]
+          || (key[0] === bestKey[0] && key[1] > bestKey[1])
+          || (key[0] === bestKey[0] && key[1] === bestKey[1] && key[2] > bestKey[2])) {
+        bestKey = key;
+        bestIdx = i;
+      }
     }
-    perDate += 1;
+    if (bestIdx < 0) break;
+    const chosen = available.splice(bestIdx, 1)[0];
+    picked.push(chosen);
+    const date = chosen.start.slice(0, 10);
+    const hour = chosen.start.slice(11, 13);
+    dateCount.set(date, (dateCount.get(date) || 0) + 1);
+    hourCount.set(hour, (hourCount.get(hour) || 0) + 1);
   }
   picked.sort((a, b) => a.start.localeCompare(b.start));
   return {

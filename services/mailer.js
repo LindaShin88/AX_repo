@@ -90,7 +90,9 @@ async function verifySmtp() {
 
 function getPublicBaseUrl() {
   const row = db.prepare("SELECT value FROM app_settings WHERE key = 'public_base_url'").get();
-  return row && row.value ? row.value.replace(/\/+$/, '') : '';
+  if (row && row.value) return row.value.replace(/\/+$/, '');
+  const envUrl = process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '';
+  return envUrl.replace(/\/+$/, '');
 }
 
 function setPublicBaseUrl(url) {

@@ -13,6 +13,10 @@ function stripTags(s) {
   return String(s || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim().replace(/\s+/g, ' ');
 }
 
+function cleanField(s) {
+  return String(s || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+}
+
 async function searchHits(name) {
   const r = await axios.get(SEARCH_URL, {
     params: { qt: name },
@@ -32,7 +36,7 @@ async function searchHits(name) {
     const nameM = row.match(/p-color1[^>]*>([^<]+)<\/span>|<th[^>]*>([^<]*?)<\/th>/);
     const profName = stripTags(nameM ? (nameM[1] || nameM[2]) : '').replace(/<[^>]+>/g, '').trim();
     if (!profName || !profName.replace(/\s/g, '').includes(name.replace(/\s/g, ''))) continue;
-    const tdMatches = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => stripTags(m[1]));
+    const tdMatches = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => cleanField(m[1]));
     hits.push({
       sabun,
       name: profName,
@@ -58,10 +62,10 @@ async function fetchDetail(sabun) {
   const affM = txt.match(/<em>\s*소속\s*<\/em>[\s\S]*?<i>\s*([^<]+?)\s*</);
   return {
     sabun,
-    email: emailM ? emailM[1].trim() : null,
-    major: majorM ? majorM[1].trim() : null,
-    phone: phoneM ? phoneM[1].trim() : null,
-    affiliation: affM ? affM[1].trim() : null,
+    email: emailM ? cleanField(emailM[1]) : null,
+    major: majorM ? cleanField(majorM[1]) : null,
+    phone: phoneM ? cleanField(phoneM[1]) : null,
+    affiliation: affM ? cleanField(affM[1]) : null,
   };
 }
 
@@ -82,6 +86,11 @@ async function lookupProfessor(name) {
     } catch (e) { h.email = null; }
   }
 
+  function splitAffiliation(s) {
+    if (!s) return [];
+    return String(s).split(/\s*,\s*/).map(cleanField).filter(Boolean);
+  }
+
   const byPhone = new Map();
   for (const h of hits) {
     const key = h.phone ? `phone:${h.phone}` : `email:${h.email || h.sabun}`;
@@ -99,7 +108,7 @@ async function lookupProfessor(name) {
       phone: first.phone,
       position: first.position,
       major: first.major,
-      affiliations: [...new Set(group.map(g => g.affiliation).filter(Boolean))],
+      affiliations: [...new Set(group.flatMap(g => splitAffiliation(g.affiliation)))],
       sabuns: group.map(g => g.sabun),
     });
   }

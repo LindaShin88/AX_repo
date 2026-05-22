@@ -7,51 +7,10 @@
       <h1 class="text-2xl font-bold text-slate-900">위원회 대시보드</h1>
       <p class="text-sm text-slate-500 mt-1">운영중인 위원회와 회의 일정을 한눈에 관리하세요.</p>
     </div>
-    <div class="flex gap-2">
-      <a href="/admin/insights" class="border bg-white hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-semibold">📊 효과 분석</a>
+    <div class="flex items-center gap-2">
       <a href="/admin/committees/new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ 새 위원회</a>
     </div>
   </div>
-
-  <section class="bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 rounded-2xl p-6 mb-6 text-white">
-    <div class="flex items-center gap-2 text-indigo-100 text-xs mb-2">
-      <span>⚡</span><span>본 시스템 도입으로 절약된 행정 시간</span>
-    </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-      <div>
-        <div class="text-4xl md:text-5xl font-bold leading-none">
-          <%= stats.savedHours.toFixed(0) %><span class="text-2xl text-indigo-200 ml-1">시간</span>
-        </div>
-        <div class="text-sm text-indigo-200 mt-2">
-          ≈ 근무일 <strong class="text-white"><%= stats.savedDays.toFixed(1) %>일</strong> ·
-          외부위원 재방문 <strong class="text-white"><%= stats.externalVisitHoursSaved %>시간</strong> 절감
-        </div>
-      </div>
-      <div>
-        <div class="text-xs text-indigo-200 mb-2">기존 vs 본 시스템 (회의 1건당)</div>
-        <div class="space-y-1.5">
-          <div class="flex items-center gap-2 text-xs">
-            <span class="w-12 text-indigo-200">기존</span>
-            <div class="flex-1 h-3 bg-white/20 rounded-full overflow-hidden">
-              <div class="h-full bg-rose-300" style="width: 100%"></div>
-            </div>
-            <span class="w-16 text-right"><%= stats.manualHours %>h</span>
-          </div>
-          <div class="flex items-center gap-2 text-xs">
-            <span class="w-12 text-indigo-200">현재</span>
-            <div class="flex-1 h-3 bg-white/20 rounded-full overflow-hidden">
-              <div class="h-full bg-emerald-300" style="width: <%= (stats.systemHours / stats.manualHours * 100).toFixed(1) %>%"></div>
-            </div>
-            <span class="w-16 text-right"><%= stats.systemHours %>h</span>
-          </div>
-        </div>
-      </div>
-      <div class="text-center md:text-right">
-        <div class="text-5xl md:text-6xl font-bold leading-none"><%= stats.reductionPct %><span class="text-2xl text-indigo-200">%</span></div>
-        <div class="text-sm text-indigo-200 mt-2">처리 시간 단축</div>
-      </div>
-    </div>
-  </section>
 
   <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
     <div class="bg-white rounded-xl p-4 border">

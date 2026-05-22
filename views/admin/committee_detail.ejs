@@ -12,13 +12,55 @@
     <a href="/admin/committees/<%= committee.id %>/meetings/new" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">← 회의 작성 페이지로 돌아가기</a>
   </div>
   <% } %>
-  <div class="flex items-start justify-between mt-2 mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-slate-900"><%= committee.name %></h1>
+  <% if (typeof committeeUpdated !== 'undefined' && committeeUpdated) { %>
+  <div class="mt-2 mb-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-2 text-sm">✅ 위원회 정보가 수정되었습니다.</div>
+  <% } %>
+
+  <div class="flex items-start justify-between mt-2 mb-6 gap-3">
+    <div class="flex-1">
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="text-2xl font-bold text-slate-900"><%= committee.name %></h1>
+        <% if (committee.quorum > 0) { %><span class="text-xs bg-slate-100 text-slate-700 rounded px-2 py-0.5">정족수 <strong><%= committee.quorum %></strong>명</span><% } %>
+        <button type="button" onclick="openCommitteeEdit()" class="text-xs border rounded px-2 py-0.5 text-slate-600 hover:bg-slate-50">✏️ 수정</button>
+        <form method="POST" action="/admin/committees/<%= committee.id %>/delete" onsubmit="return confirm('⚠️ 위원회 「<%= committee.name %>」를 삭제할까요?\n\n위원 <%= members.length %>명, 회의 <%= meetings.length %>건 + 모든 응답·서명·알림 기록이 영구 삭제됩니다.\n되돌릴 수 없습니다.')" class="inline">
+          <button type="submit" class="text-xs border border-red-200 rounded px-2 py-0.5 text-red-600 hover:bg-red-50">🗑️ 위원회 삭제</button>
+        </form>
+      </div>
       <% if (committee.description) { %><p class="text-sm text-slate-500 mt-1"><%= committee.description %></p><% } %>
     </div>
-    <a href="/admin/committees/<%= committee.id %>/meetings/new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ 새 회의 일정 잡기</a>
+    <a href="/admin/committees/<%= committee.id %>/meetings/new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">+ 새 회의 일정 잡기</a>
   </div>
+
+  <div id="committee-edit-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeCommitteeEdit()"></div>
+  <div id="committee-edit-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-md bg-white rounded-2xl shadow-2xl p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-bold text-slate-900">✏️ 위원회 정보 수정</h3>
+      <button type="button" onclick="closeCommitteeEdit()" class="text-slate-400 hover:text-slate-700 text-xl">×</button>
+    </div>
+    <form method="POST" action="/admin/committees/<%= committee.id %>/edit" class="space-y-3">
+      <div>
+        <label class="text-xs text-slate-500">위원회 이름 *</label>
+        <input name="name" value="<%= committee.name %>" required class="border rounded-lg px-3 py-2 text-sm w-full mt-1">
+      </div>
+      <div>
+        <label class="text-xs text-slate-500">설명</label>
+        <textarea name="description" rows="2" class="border rounded-lg px-3 py-2 text-sm w-full mt-1"><%= committee.description || '' %></textarea>
+      </div>
+      <div>
+        <label class="text-xs text-slate-500">정족수 (성원 기준 인원수)</label>
+        <input name="quorum" type="number" min="0" value="<%= committee.quorum %>" class="border rounded-lg px-3 py-2 text-sm w-full mt-1">
+        <p class="text-[11px] text-slate-400 mt-1">예: 5명 → 가능 응답이 5명 이상일 때 강제 확정 버튼 활성화</p>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button type="submit" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-semibold">저장</button>
+        <button type="button" onclick="closeCommitteeEdit()" class="border rounded-lg px-4 py-2 text-sm">취소</button>
+      </div>
+    </form>
+  </div>
+  <script>
+    function openCommitteeEdit(){ document.getElementById('committee-edit-backdrop').classList.remove('hidden'); document.getElementById('committee-edit-modal').classList.remove('hidden'); }
+    function closeCommitteeEdit(){ document.getElementById('committee-edit-backdrop').classList.add('hidden'); document.getElementById('committee-edit-modal').classList.add('hidden'); }
+  </script>
 
   <%
     const TYPE_LABEL = { faculty: '교원', staff: '직원', student: '학생', external: '외부 위원' };
@@ -78,26 +120,30 @@
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="text-xs text-slate-500 border-b">
-            <tr><th class="py-2 text-left">이름</th><th class="text-left">구분</th><th class="text-left">소속/역할</th><th class="text-left">연락처</th><th></th></tr>
+            <tr><th class="py-2 text-left">이름</th><th class="text-left">구분</th><th class="text-left">소속/직책</th><th class="text-left">연락처</th><th></th></tr>
           </thead>
           <tbody>
             <% members.forEach(m => { %>
               <% let ttCount = 0; if (m.timetable_cache) { try { ttCount = (JSON.parse(m.timetable_cache)||[]).length; } catch(e){} } %>
               <% let ttMeta = null; if (m.timetable_meta) { try { ttMeta = JSON.parse(m.timetable_meta); } catch(e){} } %>
               <% const multiMajor = ttMeta && (ttMeta.matchedMajors||[]).length > 1; %>
-              <tr class="border-b last:border-b-0">
+              <% const isEdited = locals.editedMemberId === m.id; %>
+              <tr class="border-b last:border-b-0 <%= isEdited ? 'bg-emerald-50' : '' %>" data-member-id="<%= m.id %>">
                 <td class="py-2 font-medium"><%= m.name %><% if (m.sabun) { %><span class="text-xs text-slate-400 ml-1">#<%= m.sabun %></span><% } %></td>
                 <td><span class="badge <%= TYPE_BADGE[m.type] || 'badge-violet' %>"><%= TYPE_LABEL[m.type] || m.type %></span></td>
                 <td class="text-slate-600 text-xs"><%= [m.affiliation, m.role].filter(Boolean).join(' / ') %></td>
                 <td class="text-slate-600 text-xs"><%= m.email || m.phone || '-' %></td>
                 <td>
-                  <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-1">
+                    <% if (m.type === 'faculty') { %>
                     <a href="/admin/committees/<%= committee.id %>/members/<%= m.id %>/timetable"
-                       class="text-xs border rounded px-2 py-1 hover:bg-slate-50 whitespace-nowrap">
-                      📅 시간표<% if (ttCount > 0) { %> <span class="badge badge-green ml-0.5"><%= ttCount %></span><% } %>
+                       class="text-xs border rounded px-2 py-1 hover:bg-slate-50 whitespace-nowrap" title="교원 시간표 (한성대 OC 자동 수집)">
+                      📅<% if (ttCount > 0) { %> <span class="badge badge-green ml-0.5"><%= ttCount %></span><% } %>
                       <% if (multiMajor) { %><span class="badge badge-amber ml-0.5" title="여러 학과에서 동일 이름 매칭">🔀<%= ttMeta.matchedMajors.length %></span><% } %>
                     </a>
-                    <form method="POST" action="/admin/committees/<%= committee.id %>/members/<%= m.id %>/delete" onsubmit="return confirm('삭제하시겠습니까?')">
+                    <% } %>
+                    <button type="button" onclick='openMemberEdit(<%- JSON.stringify({id: m.id, name: m.name, email: m.email||"", phone: m.phone||"", type: m.type, sabun: m.sabun||"", role: m.role||"", affiliation: m.affiliation||""}) %>)' class="text-xs border rounded px-2 py-1 hover:bg-slate-50" title="위원 정보 수정">✏️</button>
+                    <form method="POST" action="/admin/committees/<%= committee.id %>/members/<%= m.id %>/delete" onsubmit="return confirm('「<%= m.name %>」 위원을 삭제할까요?')" class="inline">
                       <button class="text-xs text-red-500 hover:underline">삭제</button>
                     </form>
                   </div>
@@ -113,7 +159,7 @@
 
       <div class="mt-4 border-t pt-4">
         <div class="text-sm font-semibold text-slate-700 mb-1">+ 위원 추가</div>
-        <div id="lookup-hint" class="text-xs text-slate-500 mb-3">교원은 이름 입력 후 <strong>🔎 한성대에서 자동 채우기</strong> 클릭 → 이메일/소속/사번 자동 입력 (동명이인이면 선택 화면)</div>
+        <div id="lookup-hint" class="text-xs text-slate-500 mb-3">교원은 이름 입력 후 <strong>Enter</strong> 또는 <strong>📡 교원 정보 가져오기</strong> 클릭 → 이메일/소속/사번 자동 입력 (동명이인이면 선택 화면)</div>
         <form id="add-member-form" method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3">
           <div class="col-span-2 grid grid-cols-4 gap-2">
             <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-400">
@@ -130,16 +176,73 @@
             </label>
           </div>
           <div class="col-span-2 flex gap-2">
-            <input id="add-name" name="name" placeholder="이름 *" required class="flex-1 border rounded-lg px-3 py-2 text-sm">
-            <button type="button" id="lookup-btn" onclick="lookupProfessor()" class="bg-sky-600 hover:bg-sky-700 text-white rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap">🔎 한성대 자동채우기</button>
+            <input id="add-name" name="name" placeholder="이름 *  (교원이면 Enter로 정보 자동 채우기)" required onkeydown="if(event.key==='Enter'){event.preventDefault(); if(document.querySelector('input[name=&quot;type&quot;]:checked')?.value==='faculty') lookupProfessor();}" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+            <button type="button" id="lookup-btn" onclick="lookupProfessor()" class="bg-sky-600 hover:bg-sky-700 text-white rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap">📡 교원 정보 가져오기</button>
           </div>
           <input id="add-email" name="email" type="email" placeholder="이메일 *" required class="border rounded-lg px-3 py-2 text-sm">
-          <input name="role" placeholder="역할 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input name="role" placeholder="직위/직책 (선택, 예: 위원장, 부총장, 외부전문가)" class="border rounded-lg px-3 py-2 text-sm">
           <input id="add-affiliation" name="affiliation" placeholder="소속 (선택)" class="border rounded-lg px-3 py-2 text-sm">
-          <input id="add-sabun" name="sabun" placeholder="사번 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="add-sabun" name="sabun" placeholder="사번 (선택)" class="border rounded-lg px-3 py-2 text-sm" data-faculty-staff-student>
           <input id="add-phone" name="phone" placeholder="전화번호 (선택)" class="border rounded-lg px-3 py-2 text-sm">
-          <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가 (교원은 시간표 자동 연결)</button>
+          <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가 (교원 시간표 자동 반영)</button>
         </form>
+
+        <div id="member-edit-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeMemberEdit()"></div>
+        <div id="member-edit-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-md bg-white rounded-2xl shadow-2xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-slate-900">✏️ 위원 정보 수정</h3>
+            <button type="button" onclick="closeMemberEdit()" class="text-slate-400 hover:text-slate-700 text-xl">×</button>
+          </div>
+          <form id="member-edit-form" method="POST" class="space-y-2">
+            <div class="grid grid-cols-4 gap-2">
+              <label class="flex items-center gap-1 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-400">
+                <input type="radio" name="type" value="faculty"> <span class="text-xs">교원</span>
+              </label>
+              <label class="flex items-center gap-1 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-amber-50 has-[:checked]:border-amber-400">
+                <input type="radio" name="type" value="staff"> <span class="text-xs">직원</span>
+              </label>
+              <label class="flex items-center gap-1 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-400">
+                <input type="radio" name="type" value="student"> <span class="text-xs">학생</span>
+              </label>
+              <label class="flex items-center gap-1 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-violet-50 has-[:checked]:border-violet-400">
+                <input type="radio" name="type" value="external"> <span class="text-xs">외부위원</span>
+              </label>
+            </div>
+            <input name="name" placeholder="이름 *" required class="border rounded-lg px-3 py-2 text-sm w-full">
+            <input name="email" type="email" placeholder="이메일 *" required class="border rounded-lg px-3 py-2 text-sm w-full">
+            <div class="grid grid-cols-2 gap-2">
+              <input name="role" placeholder="직위/직책" class="border rounded-lg px-3 py-2 text-sm">
+              <input name="phone" placeholder="전화번호" class="border rounded-lg px-3 py-2 text-sm">
+            </div>
+            <input name="affiliation" placeholder="소속" class="border rounded-lg px-3 py-2 text-sm w-full">
+            <input name="sabun" placeholder="사번" class="border rounded-lg px-3 py-2 text-sm w-full">
+            <div class="flex gap-2 pt-2">
+              <button type="submit" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-semibold">저장</button>
+              <button type="button" onclick="closeMemberEdit()" class="border rounded-lg px-4 py-2 text-sm">취소</button>
+            </div>
+            <p class="text-[11px] text-slate-400">교원 타입으로 변경 후 저장하면 다음 시간표 새로고침 시 자동으로 한성대 OC에서 가져옵니다.</p>
+          </form>
+        </div>
+        <script>
+          function openMemberEdit(m) {
+            const form = document.getElementById('member-edit-form');
+            form.action = '/admin/committees/<%= committee.id %>/members/' + m.id + '/edit';
+            form.querySelector('input[name="name"]').value = m.name || '';
+            form.querySelector('input[name="email"]').value = m.email || '';
+            form.querySelector('input[name="phone"]').value = m.phone || '';
+            form.querySelector('input[name="role"]').value = m.role || '';
+            form.querySelector('input[name="affiliation"]').value = m.affiliation || '';
+            form.querySelector('input[name="sabun"]').value = m.sabun || '';
+            const radio = form.querySelector('input[name="type"][value="' + m.type + '"]');
+            if (radio) radio.checked = true;
+            document.getElementById('member-edit-backdrop').classList.remove('hidden');
+            document.getElementById('member-edit-modal').classList.remove('hidden');
+          }
+          function closeMemberEdit() {
+            document.getElementById('member-edit-backdrop').classList.add('hidden');
+            document.getElementById('member-edit-modal').classList.add('hidden');
+          }
+        </script>
 
         <div id="lookup-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeLookupModal()"></div>
         <div id="lookup-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-lg bg-white rounded-2xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto">
@@ -154,14 +257,20 @@
           function updateLookupVisibility() {
             const selectedType = document.querySelector('input[name="type"]:checked')?.value;
             const isFaculty = selectedType === 'faculty';
+            const isExternal = selectedType === 'external';
             const btn = document.getElementById('lookup-btn');
             const hint = document.getElementById('lookup-hint');
             const submitBtn = document.querySelector('#add-member-form button.col-span-2');
+            const sabun = document.getElementById('add-sabun');
             if (btn) btn.style.display = isFaculty ? '' : 'none';
             if (hint) hint.style.display = isFaculty ? '' : 'none';
+            if (sabun) {
+              sabun.style.display = isExternal ? 'none' : '';
+              if (isExternal) sabun.value = '';
+            }
             if (submitBtn) {
               submitBtn.innerText = isFaculty
-                ? '+ 위원 추가 (교원은 시간표 자동 연결)'
+                ? '+ 위원 추가 (교원 시간표 자동 반영)'
                 : '+ 위원 추가';
             }
           }
@@ -177,7 +286,7 @@
               const data = await resp.json();
               showLookupResult(name, data);
             } catch (e) { alert('검색 실패: ' + e.message); }
-            finally { btn.disabled = false; btn.innerText = '🔎 한성대 자동채우기'; }
+            finally { btn.disabled = false; btn.innerText = '📡 교원 정보 가져오기'; }
           }
 
           function fillFromMatch(m) {
@@ -236,20 +345,32 @@
       <% if (meetings.length === 0) { %>
         <p class="text-sm text-slate-500 py-4 text-center">아직 등록된 회의가 없습니다.</p>
       <% } %>
+      <% if (locals.deletedMeeting) { %>
+      <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">🗑️ 회의 「<%= deletedMeeting %>」 삭제됨</div>
+      <% } %>
       <div class="space-y-2">
         <% meetings.forEach(m => { %>
-          <a href="/admin/meetings/<%= m.id %>" class="block border rounded-lg px-4 py-3 hover:border-indigo-400">
-            <div class="flex items-center justify-between">
-              <div class="font-medium text-sm"><%= m.title %></div>
-              <% if (m.status === 'scheduling') { %><span class="badge badge-amber">조율중</span>
-              <% } else if (m.status === 'confirmed') { %><span class="badge badge-blue">확정</span>
-              <% } else if (m.status === 'completed') { %><span class="badge badge-green">완료</span>
-              <% } %>
+          <div class="border rounded-lg hover:border-indigo-400 group">
+            <div class="flex items-stretch">
+              <a href="/admin/meetings/<%= m.id %>" class="flex-1 block px-4 py-3">
+                <div class="flex items-center justify-between">
+                  <div class="font-medium text-sm"><%= m.title %></div>
+                  <% if (m.status === 'scheduling') { %><span class="badge badge-amber">조율중</span>
+                  <% } else if (m.status === 'confirmed') { %><span class="badge badge-blue">확정</span>
+                  <% } else if (m.status === 'completed') { %><span class="badge badge-green">완료</span>
+                  <% } %>
+                </div>
+                <div class="text-xs text-slate-500 mt-1">
+                  후보 일정 <%= m.slot_count %>개 · 응답 <%= m.responded_count %>/<%= members.length %>명
+                </div>
+              </a>
+              <form method="POST" action="/admin/meetings/<%= m.id %>/delete"
+                    onsubmit="return confirm('회의 「<%= m.title %>」를 삭제할까요?\n관련 응답·서명·알림 기록이 함께 삭제됩니다.')"
+                    class="flex items-center pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button type="submit" class="text-xs text-rose-500 border border-rose-200 hover:bg-rose-50 rounded px-2 py-1">🗑️</button>
+              </form>
             </div>
-            <div class="text-xs text-slate-500 mt-1">
-              후보 일정 <%= m.slot_count %>개 · 응답 <%= m.responded_count %>/<%= members.length %>명
-            </div>
-          </a>
+          </div>
         <% }) %>
       </div>
     </div>

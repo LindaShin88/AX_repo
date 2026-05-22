@@ -4,17 +4,32 @@
   <h1 class="text-2xl font-bold text-slate-900 mb-2">내 계정</h1>
 
   <section class="bg-white border rounded-xl p-6 mt-3 mb-4">
-    <h2 class="font-bold text-slate-900 mb-3">계정 정보</h2>
-    <div class="text-sm space-y-1.5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-slate-900">계정 정보</h2>
+      <span class="text-xs text-slate-400">⚙️ 이메일을 본인 메일로 변경해야 회의 자동확정/동률 알림 수신 가능</span>
+    </div>
+    <% if (info) { %><div class="bg-emerald-50 text-emerald-800 text-sm rounded-lg px-3 py-2 mb-3"><%= info %></div><% } %>
+    <% if (error) { %><div class="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-3"><%= error %></div><% } %>
+    <form method="POST" action="/admin/profile/info" class="space-y-3 text-sm">
       <div><span class="text-slate-500 w-24 inline-block">아이디</span><strong><%= operator.username %></strong></div>
-      <div><span class="text-slate-500 w-24 inline-block">이름</span><%= operator.name %></div>
-      <div><span class="text-slate-500 w-24 inline-block">소속</span><%= operator.department || '-' %></div>
-      <div><span class="text-slate-500 w-24 inline-block">이메일</span><%= operator.email || '-' %></div>
+      <div class="flex items-center gap-2">
+        <label class="text-slate-500 w-24 shrink-0">이름</label>
+        <input name="name" value="<%= operator.name %>" required class="flex-1 border rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-slate-500 w-24 shrink-0">소속</label>
+        <input name="department" value="<%= operator.department || '' %>" placeholder="예: 학사팀" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-slate-500 w-24 shrink-0">이메일</label>
+        <input name="email" type="email" value="<%= operator.email || '' %>" required class="flex-1 border rounded-lg px-3 py-2 text-sm">
+      </div>
       <div><span class="text-slate-500 w-24 inline-block">권한</span>
         <% if (operator.role === 'super_admin') { %><span class="badge badge-violet">시스템 관리자</span>
         <% } else { %><span class="badge badge-blue">운영자</span><% } %>
       </div>
-    </div>
+      <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">💾 계정 정보 저장</button>
+    </form>
   </section>
 
   <section class="bg-white border rounded-xl p-6">

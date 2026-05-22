@@ -78,6 +78,26 @@ router.get('/profile', (req, res) => {
   res.render('admin/profile', { error: null, info: null });
 });
 
+router.post('/profile/info', (req, res) => {
+  if (!req.session.operatorId) return res.redirect('/admin/login');
+  const name = String(req.body.name || '').trim();
+  const email = String(req.body.email || '').trim();
+  const department = String(req.body.department || '').trim() || null;
+  if (!name || !email) return res.render('admin/profile', { error: '이름과 이메일은 필수입니다.', info: null });
+  try {
+    db.prepare('UPDATE operators SET name = ?, email = ?, department = ? WHERE id = ?')
+      .run(name, email, department, req.session.operatorId);
+    if (req.session.operator) {
+      req.session.operator.name = name;
+      req.session.operator.email = email;
+      req.session.operator.department = department;
+    }
+    res.render('admin/profile', { error: null, info: '계정 정보가 변경되었습니다. 이제 회의 자동 확정/동률 알림이 이 이메일로 발송됩니다.' });
+  } catch (e) {
+    res.render('admin/profile', { error: '저장 실패: ' + (e.code === 'SQLITE_CONSTRAINT_UNIQUE' ? '이미 사용 중인 이메일입니다.' : e.message), info: null });
+  }
+});
+
 router.post('/profile/password', async (req, res) => {
   if (!req.session.operatorId) return res.redirect('/admin/login');
   const { current_password, new_password, new_password_confirm } = req.body;

@@ -82,7 +82,7 @@ function parseTimeToken(s) {
   return { h, m: mins };
 }
 
-function parseDateOverrides(text) {
+function parseDateOverrides(text, morningHours = [], afternoonHours = []) {
   if (!text) return {};
   const result = {};
   for (const line of text.split(/\r?\n/)) {
@@ -92,8 +92,18 @@ function parseDateOverrides(text) {
     if (!m) continue;
     const date = normalizeDate(m[1].replace(/\.$/, ''));
     if (!date) continue;
-    const tokens = m[2].split(/[\s,]+/).filter(Boolean).map(parseTimeToken).filter(Boolean);
-    if (tokens.length) result[date] = tokens;
+    const raw = m[2].trim();
+    let times = [];
+    if (/^(오전|am|morning)$/i.test(raw)) {
+      times = morningHours.length > 0 ? morningHours : [{ h: 9, m: 0 }, { h: 10, m: 0 }, { h: 11, m: 0 }];
+    } else if (/^(오후|pm|afternoon)$/i.test(raw)) {
+      times = afternoonHours.length > 0 ? afternoonHours : [{ h: 13, m: 0 }, { h: 14, m: 0 }, { h: 15, m: 0 }, { h: 16, m: 0 }];
+    } else if (/^(종일|all|allday|all-day|전체)$/i.test(raw)) {
+      times = [...morningHours, ...afternoonHours];
+    } else {
+      times = raw.split(/[\s,]+/).filter(Boolean).map(parseTimeToken).filter(Boolean);
+    }
+    if (times.length) result[date] = times;
   }
   return result;
 }
@@ -167,6 +177,9 @@ router.get('/committees/:id', (req, res) => {
     autoCrawl,
     memberAddIssue,
     errFlag: req.query.err || null,
+    committeeUpdated: req.query['committee-updated'] === '1',
+    editedMemberId: req.query.edited ? parseInt(req.query.edited) : null,
+    deletedMeeting: req.query['deleted-meeting'] || null,
   });
 });
 
@@ -276,6 +289,54 @@ router.post('/committees/:id/members', async (req, res) => {
 router.post('/committees/:id/members/:memberId/delete', (req, res) => {
   db.prepare('DELETE FROM members WHERE id = ? AND committee_id = ?').run(req.params.memberId, req.params.id);
   res.redirect(`/admin/committees/${req.params.id}`);
+});
+
+router.post('/committees/:id/members/:memberId/edit', (req, res) => {
+  const committee = db.prepare('SELECT id FROM committees WHERE id = ? AND operator_id = ?')
+    .get(req.params.id, req.session.operatorId);
+  if (!committee) return res.status(404).send('Not found');
+
+  const name = String(req.body.name || '').trim();
+  const email = String(req.body.email || '').trim();
+  if (!name || !email) return res.redirect(`/admin/committees/${req.params.id}?err=name-email-required`);
+
+  let type = String(req.body.type || 'faculty').trim();
+  if (!VALID_MEMBER_TYPES.has(type)) type = 'faculty';
+
+  db.prepare(`
+    UPDATE members
+       SET name = ?, email = ?, phone = ?, type = ?, sabun = ?, role = ?, affiliation = ?
+     WHERE id = ? AND committee_id = ?
+  `).run(
+    name, email,
+    String(req.body.phone || '').trim() || null,
+    type,
+    String(req.body.sabun || '').trim() || null,
+    String(req.body.role || '').trim() || null,
+    String(req.body.affiliation || '').trim() || null,
+    req.params.memberId, committee.id,
+  );
+  res.redirect(`/admin/committees/${committee.id}?edited=${req.params.memberId}`);
+});
+
+router.post('/committees/:id/edit', (req, res) => {
+  const committee = db.prepare('SELECT id FROM committees WHERE id = ? AND operator_id = ?')
+    .get(req.params.id, req.session.operatorId);
+  if (!committee) return res.status(404).send('Not found');
+  const name = String(req.body.name || '').trim();
+  if (!name) return res.redirect(`/admin/committees/${req.params.id}?err=name-required`);
+  const quorum = parseInt(req.body.quorum);
+  db.prepare(`UPDATE committees SET name = ?, description = ?, quorum = ? WHERE id = ?`)
+    .run(name, String(req.body.description || '').trim() || null, isNaN(quorum) ? 0 : quorum, committee.id);
+  res.redirect(`/admin/committees/${committee.id}?committee-updated=1`);
+});
+
+router.post('/committees/:id/delete', (req, res) => {
+  const committee = db.prepare('SELECT id, name FROM committees WHERE id = ? AND operator_id = ?')
+    .get(req.params.id, req.session.operatorId);
+  if (!committee) return res.status(404).send('Not found');
+  db.prepare('DELETE FROM committees WHERE id = ?').run(committee.id);
+  res.redirect(`/admin?deleted=${encodeURIComponent(committee.name)}`);
 });
 
 router.get('/committees/:id/members/:memberId/timetable', (req, res) => {
@@ -526,7 +587,11 @@ router.post('/committees/:id/meetings', async (req, res) => {
     excludedDates: (req.body.excluded_dates || '').split(/[\s,]+/).map(normalizeDate).filter(Boolean),
     morningHours: morningHours.length > 0 ? morningHours : [{ h: 10, m: 0 }],
     afternoonHours: afternoonHours.length > 0 ? afternoonHours : [{ h: 14, m: 0 }, { h: 15, m: 0 }],
-    dateOverrides: parseDateOverrides(req.body.date_overrides),
+    dateOverrides: parseDateOverrides(
+      req.body.date_overrides,
+      morningHours.length > 0 ? morningHours : [{ h: 10, m: 0 }],
+      afternoonHours.length > 0 ? afternoonHours : [{ h: 14, m: 0 }, { h: 15, m: 0 }],
+    ),
   };
   const channelsArr = [].concat(req.body.notify_channels || ['email','sms']);
   const channels = channelsArr.length ? channelsArr.join(',') : 'email,sms';
@@ -543,7 +608,6 @@ router.post('/committees/:id/meetings', async (req, res) => {
   const suggestedResult = await suggestTopSlots(members, {
     durationMinutes: parseInt(duration_minutes) || 60,
     constraints,
-    topN: 6,
     referenceDate: meetingCreatedAt,
   });
   const suggested = suggestedResult.slots || [];
@@ -720,6 +784,36 @@ router.get('/meetings/:id', (req, res) => {
   });
 });
 
+router.get('/meetings/:id/remind/preview', (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.*, c.name AS committee_name FROM meetings mt
+    JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting) return res.status(404).json({ error: 'not-found' });
+  const members = db.prepare(`
+    SELECT m.* FROM members m
+    LEFT JOIN slot_responses sr ON sr.member_id = m.id
+      AND sr.slot_id IN (SELECT id FROM meeting_slots WHERE meeting_id = ?)
+      AND sr.auto_filled = 0
+    WHERE m.committee_id = ? GROUP BY m.id HAVING COUNT(sr.id) = 0
+  `).all(meeting.id, meeting.committee_id);
+  const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+  const sampleMember = members[0] || { name: '(위원)', email: '-' };
+  const sampleToken = members[0]
+    ? (db.prepare('SELECT token FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = ?').get(meeting.id, members[0].id, 'availability') || {}).token
+    : 'SAMPLE_TOKEN';
+  const sampleLink = `${baseUrl}/avail/${sampleToken || 'SAMPLE_TOKEN'}`;
+  const subject = `[리마인드] ${meeting.title} 가능일정 회신 부탁드립니다`;
+  const content = `{이름} 위원님, 아직 "${meeting.title}" 회의 가능 일정 응답이 확인되지 않습니다.\n빠른 회신 부탁드립니다.\n{링크}`;
+  res.json({
+    subject,
+    content,
+    placeholders: ['{이름}', '{링크}'],
+    members: members.map(m => ({ id: m.id, name: m.name, email: m.email, hasToken: !!db.prepare('SELECT 1 FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = ?').get(meeting.id, m.id, 'availability') })),
+    samplePreview: content.replace('{이름}', sampleMember.name).replace('{링크}', sampleLink),
+  });
+});
+
 router.post('/meetings/:id/remind', async (req, res) => {
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name FROM meetings mt
@@ -734,13 +828,47 @@ router.post('/meetings/:id/remind', async (req, res) => {
     WHERE m.committee_id = ? GROUP BY m.id HAVING COUNT(sr.id) = 0
   `).all(meeting.id, meeting.committee_id);
   const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+  const customSubject = String(req.body.custom_subject || '').trim();
+  const customContent = String(req.body.custom_content || '').trim();
+  let sent = 0;
   for (const m of members) {
     const token = db.prepare(`
       SELECT token FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = 'availability'
     `).get(meeting.id, m.id);
-    if (token) await notify.sendReminder(meeting, m, token.token, baseUrl);
+    if (!token) continue;
+    if (customContent) {
+      const link = `${baseUrl}/avail/${token.token}`;
+      const subject = customSubject || `[리마인드] ${meeting.title}`;
+      const body = customContent.replace(/\{이름\}/g, m.name).replace(/\{링크\}/g, link);
+      const channels = notify.pickChannels(meeting, m);
+      for (const ch of channels) {
+        if (ch.channel === 'sms') {
+          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'sms', subject, content: body, status: 'SMS는 운영자가 직접 발송' });
+        } else if (m.email && mailer.isSmtpConfigured()) {
+          const r = await mailer.sendMail({ to: m.email, subject, text: body });
+          const status = r.ok ? `발송 OK (${r.messageId || ''})` : `실패: ${r.reason}`;
+          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'email', subject, content: body, status });
+        } else {
+          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'email', subject, content: body, status: m.email ? 'SMTP 미설정' : 'no-email' });
+        }
+      }
+    } else {
+      await notify.sendReminder(meeting, m, token.token, baseUrl);
+    }
+    sent += 1;
   }
-  res.redirect(`/admin/meetings/${meeting.id}?action=remind-sent`);
+  res.redirect(`/admin/meetings/${meeting.id}?action=remind-sent&count=${sent}`);
+});
+
+router.post('/meetings/:id/delete', (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.id, mt.committee_id, mt.title
+      FROM meetings mt JOIN committees c ON c.id = mt.committee_id
+     WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting) return res.status(404).send('Not found');
+  db.prepare('DELETE FROM meetings WHERE id = ?').run(meeting.id);
+  res.redirect(`/admin/committees/${meeting.committee_id}?deleted-meeting=${encodeURIComponent(meeting.title)}`);
 });
 
 router.post('/meetings/:id/confirm', async (req, res) => {
@@ -953,7 +1081,9 @@ router.post('/meetings/:id/generate-final-pdf', async (req, res) => {
   try {
     const result = await generateFinalSignedPDF({
       meeting, committee, externals, signatures,
-      uploadedPath: uploadedAbs, outputPath: outPath,
+      uploadedPath: uploadedAbs,
+      uploadedOriginalName: meeting.uploaded_minutes_original_name,
+      outputPath: outPath,
     });
     const relOut = path.relative(path.join(__dirname, '..'), result.outputPath).replace(/\\/g, '/');
     db.prepare(`UPDATE meetings SET final_pdf_path = ?, final_pdf_generated_at = CURRENT_TIMESTAMP WHERE id = ?`)

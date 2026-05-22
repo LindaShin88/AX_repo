@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "위원회 운영 통합 자동화 플랫폼",
   "main": "server.js",
+  "engines": {
+    "node": ">=22 <25"
+  },
   "scripts": {
     "start": "node server.js",
     "seed": "node seed.js",

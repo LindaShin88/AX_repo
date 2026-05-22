@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: committee-platform
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: AUTO_SEED
+        value: "1"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: PORT
+        value: 10000

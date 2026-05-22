@@ -33,6 +33,24 @@ router.get('/minutes/:token', (req, res) => {
   res.download(fp, cleanName);
 });
 
+router.get('/minutes-inline/:token', (req, res) => {
+  const token = db.prepare(`
+    SELECT t.*, mt.uploaded_minutes_path, mt.uploaded_minutes_original_name
+    FROM member_tokens t
+    JOIN meetings mt ON mt.id = t.meeting_id
+    WHERE t.token = ? AND t.purpose = 'signature'
+  `).get(req.params.token);
+  if (!token) return res.status(404).send('Not found');
+  if (!token.uploaded_minutes_path) return res.status(404).send('No file');
+  const fp = path.join(__dirname, '..', token.uploaded_minutes_path);
+  if (!fs.existsSync(fp)) return res.status(404).send('File missing');
+  const ext = path.extname(fp).toLowerCase();
+  if (ext === '.pdf') res.type('application/pdf');
+  else if (ext === '.hwp' || ext === '.hwpx') res.type('application/x-hwp');
+  res.setHeader('Content-Disposition', 'inline; filename="' + encodeURIComponent(path.basename(fp)) + '"');
+  res.sendFile(fp);
+});
+
 router.get('/avail/:token', (req, res) => {
   const token = db.prepare(`
     SELECT t.*, m.name AS member_name, m.role, m.affiliation, m.type AS member_type, m.sabun,
@@ -154,7 +172,9 @@ router.post('/sign/:token', async (req, res) => {
         const outPath = path.join(outDir, `final_${meeting.id}_${Date.now()}.pdf`);
         const result = await generateFinalSignedPDF({
           meeting, committee, externals, signatures,
-          uploadedPath: uploadedAbs, outputPath: outPath,
+          uploadedPath: uploadedAbs,
+          uploadedOriginalName: meeting.uploaded_minutes_original_name,
+          outputPath: outPath,
         });
         const relOut = path.relative(path.join(__dirname, '..'), result.outputPath).replace(/\\/g, '/');
         db.prepare(`UPDATE meetings SET final_pdf_path = ?, final_pdf_generated_at = CURRENT_TIMESTAMP WHERE id = ?`)

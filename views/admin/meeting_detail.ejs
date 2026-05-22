@@ -20,6 +20,23 @@
     const pad = n => String(n).padStart(2,'0');
     return `${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.(${DAY_KO_M[d.getDay()]}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
+  function formatAgendaLines(description) {
+    if (!description || !description.trim()) return [];
+    const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+    const items = description.split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.replace(/^[\d①-⑳]+\s*[.)]\s*/, '').replace(/^[①-⑳]\s*/, '').replace(/^[•\-·]\s*/, '').trim())
+      .filter(Boolean);
+    if (items.length === 0) return [];
+    if (items.length === 1) return [`- 안건 : ${items[0]}`];
+    const out = ['- 안건'];
+    items.forEach(function(item, i){
+      const marker = i < CIRCLED.length ? CIRCLED[i] : '('+(i+1)+')';
+      out.push('  ' + marker + ' ' + item);
+    });
+    return out;
+  }
   function buildAnnouncement(meeting, slot) {
     const when = formatKor(slot.start_time);
     const lines = [
@@ -28,12 +45,7 @@
       `- 일시: ${when}`,
       `- 장소: ${meeting.location || '추후 공지'}`,
     ];
-    if (meeting.description && meeting.description.trim()) {
-      lines.push('- 안건');
-      for (const al of meeting.description.split(/\r?\n/).map(s => s.trim()).filter(Boolean)) {
-        lines.push(al);
-      }
-    }
+    lines.push.apply(lines, formatAgendaLines(meeting.description));
     lines.push(``, `참석 부탁드립니다.`, `감사합니다.`);
     return lines.join('\n');
   }
@@ -42,11 +54,14 @@
   <a href="/admin/committees/<%= meeting.committee_id %>" class="text-sm text-slate-500 hover:text-slate-900">← <%= meeting.committee_name %></a>
   <div class="flex items-start justify-between mt-2 mb-6">
     <div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         <h1 class="text-2xl font-bold text-slate-900"><%= meeting.title %></h1>
         <% if (meeting.status === 'scheduling') { %><span class="badge badge-amber">일정 조율중</span>
         <% } else if (meeting.status === 'confirmed') { %><span class="badge badge-blue">일정 확정</span>
         <% } else if (meeting.status === 'completed') { %><span class="badge badge-green">완료</span><% } %>
+        <form method="POST" action="/admin/meetings/<%= meeting.id %>/delete" onsubmit="return confirm('⚠️ 회의 「<%= meeting.title %>」를 삭제할까요?\n\n관련 모든 응답·서명·알림·토큰이 영구 삭제됩니다.\n되돌릴 수 없습니다.')" class="inline">
+          <button type="submit" class="text-xs border border-red-200 rounded px-2 py-0.5 text-red-600 hover:bg-red-50">🗑️ 회의 삭제</button>
+        </form>
       </div>
       <% if (meeting.description) { %><p class="text-sm text-slate-500 mt-1"><%= meeting.description %></p><% } %>
       <% if (confirmedSlot) { %>
@@ -109,9 +124,64 @@
     </div>
     <div class="flex gap-2">
       <% if (meeting.status === 'scheduling') { %>
-      <form method="POST" action="/admin/meetings/<%= meeting.id %>/remind">
-        <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">⏰ 미응답자 리마인드</button>
-      </form>
+      <button type="button" onclick="openReminderPreview()" class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">⏰ 미응답자 리마인드</button>
+
+      <div id="rem-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeReminderPreview()"></div>
+      <div id="rem-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-2xl bg-white rounded-2xl shadow-2xl p-5 max-h-[85vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-slate-900">⏰ 미응답자 리마인드 미리보기</h3>
+          <button type="button" onclick="closeReminderPreview()" class="text-slate-400 hover:text-slate-700 text-xl">×</button>
+        </div>
+        <div id="rem-targets" class="mb-3 text-xs text-slate-600"></div>
+        <form id="rem-form" method="POST" action="/admin/meetings/<%= meeting.id %>/remind" class="space-y-2">
+          <div>
+            <label class="text-xs text-slate-500">제목</label>
+            <input name="custom_subject" id="rem-subject" class="border rounded-lg px-3 py-2 text-sm w-full mt-1">
+          </div>
+          <div>
+            <label class="text-xs text-slate-500">본문 (수정 가능 · <code class="bg-slate-100 px-1 rounded">{이름}</code>, <code class="bg-slate-100 px-1 rounded">{링크}</code> 자동 치환)</label>
+            <textarea name="custom_content" id="rem-content" rows="6" class="border rounded-lg px-3 py-2 text-sm w-full mt-1 font-mono" oninput="updateRemSample()"></textarea>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">📨 첫 번째 미응답 위원에게 발송될 실제 모습 (미리보기)</div>
+            <pre id="rem-sample" class="bg-slate-50 border rounded-lg p-3 text-xs whitespace-pre-wrap font-sans text-slate-700"></pre>
+          </div>
+          <div class="flex gap-2 pt-2">
+            <button type="submit" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-lg text-sm font-semibold">📤 위 내용 그대로 전체 미응답자에게 발송</button>
+            <button type="button" onclick="closeReminderPreview()" class="border rounded-lg px-4 py-2 text-sm">취소</button>
+          </div>
+        </form>
+      </div>
+      <script>
+        let _remData = null;
+        async function openReminderPreview() {
+          try {
+            const r = await fetch('/admin/meetings/<%= meeting.id %>/remind/preview');
+            const data = await r.json();
+            _remData = data;
+            document.getElementById('rem-subject').value = data.subject;
+            document.getElementById('rem-content').value = data.content;
+            const list = (data.members || []).map(m => `<span class="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 mr-1 mb-1">${m.name} (${m.email || '이메일 없음'})</span>`).join('');
+            document.getElementById('rem-targets').innerHTML = `<div class="font-semibold mb-1">대상 ${data.members.length}명</div>${list || '<span class="text-slate-400">미응답자 없음</span>'}`;
+            updateRemSample();
+            document.getElementById('rem-backdrop').classList.remove('hidden');
+            document.getElementById('rem-modal').classList.remove('hidden');
+          } catch (e) { alert('미리보기 로드 실패: ' + e.message); }
+        }
+        function updateRemSample() {
+          if (!_remData) return;
+          const sample = _remData.members[0];
+          const content = document.getElementById('rem-content').value;
+          const filled = content
+            .replace(/\{이름\}/g, sample ? sample.name : '(위원)')
+            .replace(/\{링크\}/g, _remData.samplePreview.match(/https?:\S+/)?.[0] || '(링크)');
+          document.getElementById('rem-sample').textContent = filled;
+        }
+        function closeReminderPreview() {
+          document.getElementById('rem-backdrop').classList.add('hidden');
+          document.getElementById('rem-modal').classList.add('hidden');
+        }
+      </script>
       <form method="POST" action="/admin/meetings/<%= meeting.id %>/ars-now" onsubmit="return confirm('SMS 미응답 위원에게 ARS 자동 전화를 시뮬레이션 발송합니다. 진행할까요?')">
         <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">📞 ARS 즉시 발송</button>
       </form>
@@ -128,10 +198,6 @@
   <section class="bg-white border rounded-xl p-5 mb-6">
     <div class="flex items-center justify-between mb-4">
       <h2 class="font-bold text-slate-900">진행 단계</h2>
-      <div class="flex items-center gap-3 text-xs">
-        <span class="text-slate-500">기존 <strong class="text-rose-600"><%= progress.manualHours %>h</strong> → 본 시스템 <strong class="text-emerald-600"><%= progress.systemHours %>h</strong></span>
-        <span class="badge badge-violet">회의 1건당 -<%= progress.savedHours %>시간 절감</span>
-      </div>
     </div>
     <div class="relative">
       <div class="absolute top-5 left-0 right-0 h-1 bg-slate-100 rounded"></div>
@@ -216,11 +282,18 @@
   <% } %>
 
   <section class="bg-white border rounded-xl p-5 mb-6">
-    <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <h2 class="font-bold text-slate-900">📅 후보 일정별 응답 현황</h2>
-      <span class="text-xs text-slate-500">초록 = 가능 / 빨강 = 불가능 / 회색 = 미응답 · '시' 표시는 시간표 자동 인식</span>
+      <div class="flex items-center gap-3">
+        <div class="inline-flex border rounded-lg overflow-hidden text-xs">
+          <button type="button" id="matrix-mode-slot" onclick="setMatrixMode('slot')" class="px-3 py-1.5 bg-indigo-600 text-white font-semibold">슬롯 = 행</button>
+          <button type="button" id="matrix-mode-member" onclick="setMatrixMode('member')" class="px-3 py-1.5 bg-white hover:bg-slate-50">위원 = 행</button>
+        </div>
+        <span class="text-xs text-slate-500">초록=가능 / 빨강=불가 / 회색=미응답 · '시'=시간표 자동</span>
+      </div>
     </div>
-    <div class="overflow-x-auto">
+
+    <div id="matrix-slot" class="overflow-x-auto">
       <table class="w-full text-sm border-collapse">
         <thead>
           <tr class="bg-slate-50">
@@ -271,6 +344,82 @@
         </tbody>
       </table>
     </div>
+
+    <div id="matrix-member" class="overflow-x-auto" style="display:none">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-slate-50">
+            <th class="border-b border-slate-200 px-3 py-2 text-left text-xs sticky left-0 bg-slate-50">위원</th>
+            <% slotMatrix.forEach(({ slot }) => { %>
+              <th class="border-b border-slate-200 px-2 py-2 text-xs text-center" style="min-width:90px;">
+                <%= fmtKor(slot.start_time) %>
+              </th>
+            <% }) %>
+          </tr>
+        </thead>
+        <tbody>
+          <% members.forEach((m, mi) => { %>
+            <tr class="hover:bg-slate-50">
+              <td class="border-b border-slate-100 px-3 py-2 font-medium text-sm sticky left-0 bg-white">
+                <%= m.name %>
+                <span class="text-[10px] text-slate-400 font-normal ml-1"><%= TYPE_LABEL[m.type] || m.type %></span>
+              </td>
+              <% slotMatrix.forEach(({ cells }) => {
+                  const r = cells[mi] ? cells[mi].response : null; %>
+                <td class="border-b border-slate-100 px-1 py-2 text-center text-xs">
+                  <% if (!r) { %>
+                    <span class="badge badge-gray">·</span>
+                  <% } else if (r.response === 'available') { %>
+                    <span class="badge badge-green" title="<%= r.note || '' %>">O</span>
+                  <% } else if (r.response === 'unavailable') { %>
+                    <span class="badge badge-red" title="<%= r.note || '' %>">X<%= r.auto_filled ? '시' : '' %></span>
+                  <% } %>
+                </td>
+              <% }) %>
+            </tr>
+          <% }) %>
+        </tbody>
+        <tfoot>
+          <tr class="bg-emerald-50">
+            <td class="border-b border-slate-200 px-3 py-2 text-xs text-slate-700 font-semibold sticky left-0 bg-emerald-50">가능 응답수</td>
+            <% slotMatrix.forEach(({ availableCount }) => { %>
+              <td class="border-b border-slate-200 px-2 py-2 text-center text-xs text-emerald-700 font-bold"><%= availableCount %></td>
+            <% }) %>
+          </tr>
+          <tr class="bg-slate-50">
+            <td class="px-3 py-2 text-xs text-slate-700 font-semibold sticky left-0 bg-slate-50">확정</td>
+            <% slotMatrix.forEach(({ slot }) => { %>
+              <td class="px-2 py-2 text-center">
+                <form method="POST" action="/admin/meetings/<%= meeting.id %>/confirm" onsubmit="return confirm('이 시간으로 회의를 확정하시겠습니까? 모든 위원에게 안내 메일이 발송됩니다.')">
+                  <input type="hidden" name="slot_id" value="<%= slot.id %>">
+                  <button class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">확정</button>
+                </form>
+              </td>
+            <% }) %>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <script>
+      function setMatrixMode(mode) {
+        const slotEl = document.getElementById('matrix-slot');
+        const memberEl = document.getElementById('matrix-member');
+        const btnSlot = document.getElementById('matrix-mode-slot');
+        const btnMember = document.getElementById('matrix-mode-member');
+        if (mode === 'member') {
+          slotEl.style.display = 'none'; memberEl.style.display = '';
+          btnSlot.className = 'px-3 py-1.5 bg-white hover:bg-slate-50';
+          btnMember.className = 'px-3 py-1.5 bg-indigo-600 text-white font-semibold';
+        } else {
+          slotEl.style.display = ''; memberEl.style.display = 'none';
+          btnSlot.className = 'px-3 py-1.5 bg-indigo-600 text-white font-semibold';
+          btnMember.className = 'px-3 py-1.5 bg-white hover:bg-slate-50';
+        }
+        try { localStorage.setItem('matrixMode', mode); } catch (e) {}
+      }
+      try { const saved = localStorage.getItem('matrixMode'); if (saved === 'member') setMatrixMode('member'); } catch (e) {}
+    </script>
   </section>
   <% } %>
 
@@ -555,10 +704,14 @@
         <% } %>
         <% if (externalSigned > 0) { %>
           <form method="POST" action="/admin/meetings/<%= meeting.id %>/generate-final-pdf">
-            <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-semibold">
+            <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-semibold"
+                    title="<%= meeting.final_pdf_path ? '서명자가 추가되었거나 서명을 다시 받은 경우, 지금 서명된 모든 외부위원 기준으로 PDF를 새로 만들어요. 이전 PDF는 대체됩니다.' : '지금까지 서명한 외부위원의 서명 페이지를 회의록 뒤에 붙여 최종 PDF를 만듭니다.' %>">
               🔄 <%= meeting.final_pdf_path ? '다시 생성' : 'PDF 만들기' %> (현재 서명 기준)
             </button>
           </form>
+          <% if (meeting.final_pdf_path) { %>
+          <span class="text-[11px] text-slate-400" title="서명자가 추가되었거나 다시 받은 경우 클릭. 현재 서명된 모든 외부위원 기준으로 PDF 재생성">ℹ️ 서명자 추가 후 다시 받은 경우 클릭</span>
+          <% } %>
         <% } %>
         <% if (meeting.uploaded_minutes_path && meeting.uploaded_minutes_original_name && /\.hwpx?$/i.test(meeting.uploaded_minutes_original_name)) { %>
           <span class="text-xs bg-amber-100 text-amber-900 border border-amber-300 rounded px-2 py-1">⚠️ 한글(.hwp) 업로드: 최종 PDF는 "외부위원 서명 페이지만" 별도 PDF로 생성됩니다.</span>

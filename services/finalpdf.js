@@ -31,9 +31,6 @@ function generateSignaturePagePDF({ meeting, committee, externals, signatures, o
     doc.fontSize(18).text(`${committee.name}`, { align: 'center' });
     doc.moveDown(0.2);
     doc.fontSize(14).text(`「${meeting.title}」 외부위원 전자서명`, { align: 'center' });
-    doc.moveDown(0.6);
-    doc.fontSize(9).fillColor('#666').text(`발급일: ${new Date().toLocaleString('ko-KR')}`, { align: 'right' });
-    doc.fillColor('black');
     doc.moveDown(1);
 
     const signedExternals = externals.map(ext => ({
@@ -76,8 +73,13 @@ function generateSignaturePagePDF({ meeting, committee, externals, signatures, o
         doc.fontSize(9).fillColor('red').text('(서명 이미지 오류)', x + 10, y + 52);
       }
 
+      const signedDateOnly = (() => {
+        const d = new Date(typeof sig.signed_at === 'string' ? sig.signed_at.replace(' ', 'T') : sig.signed_at);
+        if (isNaN(d.getTime())) return String(sig.signed_at || '').slice(0, 10);
+        return `${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.`;
+      })();
       doc.fontSize(7).fillColor('#888').text(
-        `서명일시: ${sig.signed_at}    IP: ${sig.ip_address || '-'}`,
+        `서명일: ${signedDateOnly}`,
         x + 10, y + sigBoxH - 14, { width: sigBoxW - 20 }
       );
       doc.fillColor('black');
@@ -92,7 +94,38 @@ function generateSignaturePagePDF({ meeting, committee, externals, signatures, o
   });
 }
 
-async function generateFinalSignedPDF({ meeting, committee, externals, signatures, uploadedPath, outputPath }) {
+async function generateHwpNoticePagePDF({ meeting, committee, uploadedOriginalName, outputPath }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFKit({ size: 'A4', margin: 50 });
+    const stream = fs.createWriteStream(outputPath);
+    doc.pipe(stream);
+    const fontPath = findKoreanFont();
+    if (fontPath) doc.registerFont('ko', fontPath).font('ko');
+    doc.fontSize(18).text(`${committee.name}`, { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(14).text(`「${meeting.title}」 — 외부위원 서명`, { align: 'center' });
+    doc.moveDown(2);
+    doc.fontSize(11).fillColor('#444').text(
+      `※ 본 회의의 회의록 본문은 별도 한글(.hwp/.hwpx) 파일로 제공됩니다.`,
+      { align: 'center' }
+    );
+    doc.moveDown(0.4);
+    if (uploadedOriginalName) {
+      doc.fontSize(10).fillColor('#666').text(`회의록 파일명: ${uploadedOriginalName}`, { align: 'center' });
+    }
+    doc.moveDown(0.8);
+    doc.fontSize(10).fillColor('#666').text(
+      `회의록 본문과 본 PDF(서명 페이지)를 함께 보관해주세요.`,
+      { align: 'center' }
+    );
+    doc.fillColor('black');
+    doc.end();
+    stream.on('finish', () => resolve(outputPath));
+    stream.on('error', reject);
+  });
+}
+
+async function generateFinalSignedPDF({ meeting, committee, externals, signatures, uploadedPath, uploadedOriginalName, outputPath }) {
   const dir = path.dirname(outputPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -101,10 +134,33 @@ async function generateFinalSignedPDF({ meeting, committee, externals, signature
 
   const ext = uploadedPath ? path.extname(uploadedPath).toLowerCase() : '';
   const canMerge = ext === '.pdf' && fs.existsSync(uploadedPath);
+  const isHwp = ext === '.hwp' || ext === '.hwpx';
 
-  if (!canMerge) {
+  if (!canMerge && !isHwp) {
     fs.renameSync(sigPagePath, outputPath);
-    return { outputPath, mergedWithUploaded: false, reason: ext === '.hwp' || ext === '.hwpx' ? 'hwp-uploaded' : 'no-pdf' };
+    return { outputPath, mergedWithUploaded: false, reason: 'no-pdf' };
+  }
+
+  if (isHwp) {
+    const noticePath = outputPath + '.notice.tmp.pdf';
+    try {
+      await generateHwpNoticePagePDF({ meeting, committee, uploadedOriginalName, outputPath: noticePath });
+      const noticeBytes = fs.readFileSync(noticePath);
+      const sigBytes = fs.readFileSync(sigPagePath);
+      const finalDoc = await PDFDocument.load(noticeBytes);
+      const sigDoc = await PDFDocument.load(sigBytes);
+      const copied = await finalDoc.copyPages(sigDoc, sigDoc.getPageIndices());
+      for (const p of copied) finalDoc.addPage(p);
+      const finalBytes = await finalDoc.save();
+      fs.writeFileSync(outputPath, finalBytes);
+      try { fs.unlinkSync(sigPagePath); } catch (e) {}
+      try { fs.unlinkSync(noticePath); } catch (e) {}
+      return { outputPath, mergedWithUploaded: false, reason: 'hwp-uploaded', notice: true };
+    } catch (e) {
+      fs.renameSync(sigPagePath, outputPath);
+      try { fs.unlinkSync(noticePath); } catch (e2) {}
+      return { outputPath, mergedWithUploaded: false, reason: 'hwp-uploaded', error: e.message };
+    }
   }
 
   try {
