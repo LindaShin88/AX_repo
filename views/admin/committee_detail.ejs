@@ -160,7 +160,7 @@
       <div class="mt-4 border-t pt-4">
         <div class="text-sm font-semibold text-slate-700 mb-1">+ 위원 추가</div>
         <div id="lookup-hint" class="text-xs text-slate-500 mb-3">교원은 이름 입력 후 <strong>Enter</strong> 또는 <strong>📡 교원 정보 가져오기</strong> 클릭 → 이메일/소속/사번 자동 입력 (동명이인이면 선택 화면)</div>
-        <form id="add-member-form" method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3">
+        <form id="add-member-form" method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3" autocomplete="off">
           <div class="col-span-2 grid grid-cols-4 gap-2">
             <label class="flex items-center gap-1.5 border rounded-lg px-2 py-2 cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-400">
               <input type="radio" name="type" value="faculty" checked onchange="updateLookupVisibility()"> <span class="text-xs">교원</span>
@@ -176,14 +176,14 @@
             </label>
           </div>
           <div class="col-span-2 flex gap-2">
-            <input id="add-name" name="name" placeholder="이름 *  (교원이면 Enter로 정보 자동 채우기)" required onkeydown="if(event.key==='Enter'){event.preventDefault(); if(document.querySelector('input[name=&quot;type&quot;]:checked')?.value==='faculty') lookupProfessor();}" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+            <input id="add-name" name="name" placeholder="이름 *  (교원이면 Enter로 정보 자동 채우기)" required autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault(); if(document.querySelector('input[name=&quot;type&quot;]:checked')?.value==='faculty') lookupProfessor();}" class="flex-1 border rounded-lg px-3 py-2 text-sm">
             <button type="button" id="lookup-btn" onclick="lookupProfessor()" class="bg-sky-600 hover:bg-sky-700 text-white rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap">📡 교원 정보 가져오기</button>
           </div>
-          <input id="add-email" name="email" type="email" placeholder="이메일 *" required class="border rounded-lg px-3 py-2 text-sm">
-          <input name="role" placeholder="직위/직책 (선택, 예: 위원장, 부총장, 외부전문가)" class="border rounded-lg px-3 py-2 text-sm">
-          <input id="add-affiliation" name="affiliation" placeholder="소속 (선택)" class="border rounded-lg px-3 py-2 text-sm">
-          <input id="add-sabun" name="sabun" placeholder="사번 (선택)" class="border rounded-lg px-3 py-2 text-sm" data-faculty-staff-student>
-          <input id="add-phone" name="phone" placeholder="전화번호 (선택)" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="add-email" name="email" type="email" placeholder="이메일 *" required autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
+          <input name="role" placeholder="직위/직책 (선택, 예: 위원장, 부총장, 외부전문가)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="add-affiliation" name="affiliation" placeholder="소속 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="add-sabun" name="sabun" placeholder="사번 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm" data-faculty-staff-student>
+          <input id="add-phone" name="phone" placeholder="전화번호 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
           <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가 (교원 시간표 자동 반영)</button>
         </form>
 

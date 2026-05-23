@@ -124,7 +124,7 @@
     </div>
     <div class="flex gap-2">
       <% if (meeting.status === 'scheduling') { %>
-      <button type="button" onclick="openReminderPreview()" class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">⏰ 미응답자 리마인드</button>
+      <button type="button" onclick="openReminderPreview()" class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm whitespace-nowrap">⏰ 미응답자 리마인드</button>
 
       <div id="rem-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeReminderPreview()"></div>
       <div id="rem-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-2xl bg-white rounded-2xl shadow-2xl p-5 max-h-[85vh] overflow-y-auto">
@@ -183,10 +183,10 @@
         }
       </script>
       <form method="POST" action="/admin/meetings/<%= meeting.id %>/ars-now" onsubmit="return confirm('SMS 미응답 위원에게 ARS 자동 전화를 시뮬레이션 발송합니다. 진행할까요?')">
-        <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">📞 ARS 즉시 발송</button>
+        <button class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm whitespace-nowrap">📞 ARS 즉시 발송</button>
       </form>
       <% } %>
-      <a href="/admin/meetings/<%= meeting.id %>/sms-send" class="bg-white border hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">📱 SMS 수동 발송</a>
+      <a href="/admin/meetings/<%= meeting.id %>/sms-send" class="bg-white border hover:bg-slate-50 px-3 py-2 rounded-lg text-sm whitespace-nowrap">📱 SMS 수동 발송</a>
       <% if (meeting.pdf_path) { %>
       <a href="/admin/meetings/<%= meeting.id %>/pdf" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-semibold">📄 PDF 다운로드</a>
       <% } %>

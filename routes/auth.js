@@ -4,7 +4,7 @@ const db = require('../database');
 
 const router = express.Router();
 
-const ALLOWED_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAINS || 'hansung.ac.kr')
+const ALLOWED_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAINS || 'hansung.kr')
   .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
 function emailDomainOk(email) {

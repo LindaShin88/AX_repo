@@ -16,7 +16,7 @@
     <button type="button" onclick="clearDraft(true)" class="ml-2 underline text-amber-700">초기화</button>
   </div>
 
-  <form id="meeting-form" method="POST" action="/admin/committees/<%= committee.id %>/meetings" class="space-y-5">
+  <form id="meeting-form" method="POST" action="/admin/committees/<%= committee.id %>/meetings" class="space-y-5" autocomplete="off">
 
     <section class="bg-white border rounded-xl p-6 space-y-4">
       <h2 class="font-bold text-slate-900">1. 기본 정보</h2>
