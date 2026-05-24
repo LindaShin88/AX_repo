@@ -57,6 +57,7 @@ app.use(session({
 app.use(attachAdmin);
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/about', (req, res) => res.sendFile(path.join(__dirname, 'about.html')));
 
 app.use('/admin', authRoutes);
 app.use('/admin/users', superAdminRoutes);
