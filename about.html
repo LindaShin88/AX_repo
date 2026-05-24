@@ -72,6 +72,56 @@
     </div>
   </nav>
 
+  <!-- ===== 위원 데모 MODAL ===== -->
+  <div id="demo-modal-backdrop" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60]" onclick="closeMemberDemo()"></div>
+  <div id="demo-modal" class="hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-[92vw] max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
+    <div class="px-6 pt-6 pb-3 flex items-center justify-between">
+      <div>
+        <div class="text-xs font-semibold text-indigo-600 tracking-widest uppercase mb-1">MEMBER VIEW</div>
+        <h3 class="text-lg font-bold text-slate-900">위원 시점 데모</h3>
+      </div>
+      <button type="button" onclick="closeMemberDemo()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">&times;</button>
+    </div>
+    <p class="px-6 pb-4 text-xs text-slate-500 leading-relaxed">
+      위원회 위원이 메일로 받은 링크를 클릭했을 때 보는 화면입니다.<br>로그인 없이 응답·서명할 수 있어요.
+    </p>
+    <div class="border-t border-slate-100 divide-y divide-slate-100">
+      <a href="https://committee-platform.onrender.com/avail/demo-avail-voter" target="_blank"
+         class="flex items-center gap-4 px-6 py-5 hover:bg-indigo-50/40 transition group">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center text-xl">🗳️</div>
+        <div class="flex-1">
+          <div class="font-bold text-slate-900">일정 투표 화면</div>
+          <div class="text-xs text-slate-500 mt-0.5">위원이 후보 일정 중 가능/불가능을 선택</div>
+        </div>
+        <svg class="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a href="https://committee-platform.onrender.com/sign/demo-sign-external" target="_blank"
+         class="flex items-center gap-4 px-6 py-5 hover:bg-rose-50/40 transition group">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 text-white flex items-center justify-center text-xl">✍️</div>
+        <div class="flex-1">
+          <div class="font-bold text-slate-900">서명 화면 (외부위원)</div>
+          <div class="text-xs text-slate-500 mt-0.5">회의록 미리보기 + 손글씨 전자서명</div>
+        </div>
+        <svg class="w-5 h-5 text-slate-300 group-hover:text-rose-500 group-hover:translate-x-1 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </div>
+    <div class="px-6 py-4 bg-slate-50 text-[11px] text-slate-500 leading-relaxed">
+      💡 <strong class="text-slate-700">팁:</strong> 실제 위원은 메일/SMS로 받은 1회용 링크로 접속합니다. 여기서는 데모용 토큰으로 같은 화면을 미리 볼 수 있어요.
+    </div>
+  </div>
+
+  <script>
+    function openMemberDemo() {
+      document.getElementById('demo-modal-backdrop').classList.remove('hidden');
+      document.getElementById('demo-modal').classList.remove('hidden');
+    }
+    function closeMemberDemo() {
+      document.getElementById('demo-modal-backdrop').classList.add('hidden');
+      document.getElementById('demo-modal').classList.add('hidden');
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMemberDemo(); });
+  </script>
+
   <!-- ===== INTRO: 서비스 소개 ===== -->
   <section id="intro" class="py-24 bg-white">
     <div class="max-w-6xl mx-auto px-6">
