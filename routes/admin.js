@@ -550,6 +550,7 @@ router.post('/committees/:id/timetable-sync', async (req, res) => {
 });
 
 router.get('/lookup-professor', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   const name = String(req.query.name || '').trim();
   if (!name) return res.json({ matches: [], reason: 'empty-name' });
   try {

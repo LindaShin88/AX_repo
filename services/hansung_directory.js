@@ -33,8 +33,11 @@ async function searchHits(name) {
     const sabunM = row.match(/prsnInt\/(\d+)\/artclView/);
     if (!sabunM) continue;
     const sabun = sabunM[1];
-    const nameM = row.match(/p-color1[^>]*>([^<]+)<\/span>|<th[^>]*>([^<]*?)<\/th>/);
-    const profName = stripTags(nameM ? (nameM[1] || nameM[2]) : '').replace(/<[^>]+>/g, '').trim();
+    // 이름은 prsnInt 링크가 달린 <th class="btn-open"> 안에 있다. 검색어 하이라이트가
+    // 이름 일부를 <span class="p-color1">…</span>로 감싸 이름을 쪼개므로(예: "<span>이형</span>용"),
+    // span만 떼지 말고 <th> 내부 전체 텍스트에서 태그를 제거해 온전한 이름을 얻는다.
+    const thM = row.match(/<th[^>]*btn-open[^>]*>([\s\S]*?)<\/th>/i) || row.match(/<th[^>]*>([\s\S]*?)<\/th>/i);
+    const profName = stripTags(thM ? thM[1] : '');
     if (!profName || !profName.replace(/\s/g, '').includes(name.replace(/\s/g, ''))) continue;
     const tdMatches = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => cleanField(m[1]));
     hits.push({

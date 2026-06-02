@@ -282,7 +282,7 @@
             const btn = document.getElementById('lookup-btn');
             btn.disabled = true; btn.innerText = '⏳ 검색 중...';
             try {
-              const resp = await fetch('/admin/lookup-professor?name=' + encodeURIComponent(name));
+              const resp = await fetch('/admin/lookup-professor?name=' + encodeURIComponent(name) + '&_=' + Date.now(), { cache: 'no-store' });
               const data = await resp.json();
               showLookupResult(name, data);
             } catch (e) { alert('검색 실패: ' + e.message); }
