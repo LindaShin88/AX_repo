@@ -9,12 +9,18 @@ const db = require('./database');
 
 if (process.env.AUTO_SEED === '1') {
   try {
-    const ops = db.prepare('SELECT COUNT(*) AS n FROM operators').get();
-    if (ops.n === 0) {
-      console.log('[startup] DB empty — running seed...');
-      execSync('node seed.js', { stdio: 'inherit' });
+    if (db.__cloudMode && db.__syncFailed) {
+      // 클라우드 동기화가 실패하면 로컬이 비어 보일 수 있다. 이때 시드를 돌리면
+      // 클라우드의 실제 데이터를 덮어쓸 위험이 있으므로 안전하게 건너뛴다.
+      console.warn('[startup] 클라우드 동기화 실패 — 데이터 보호를 위해 시드를 건너뜁니다');
     } else {
-      console.log(`[startup] DB has ${ops.n} operators — skipping seed`);
+      const ops = db.prepare('SELECT COUNT(*) AS n FROM operators').get();
+      if (ops.n === 0) {
+        console.log('[startup] DB empty — running seed...');
+        execSync('node seed.js', { stdio: 'inherit' });
+      } else {
+        console.log(`[startup] DB has ${ops.n} operators — skipping seed`);
+      }
     }
   } catch (e) { console.error('[startup] auto-seed failed:', e.message); }
 }

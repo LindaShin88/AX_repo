@@ -16,3 +16,9 @@ services:
         generateValue: true
       - key: PORT
         value: 10000
+      # 데이터 영구 보존용 Turso(클라우드 SQLite) 연결 정보.
+      # 값은 코드/깃에 넣지 말고 Render 대시보드의 Environment 탭에서 직접 입력한다.
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

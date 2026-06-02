@@ -1,13 +1,42 @@
-const Database = require('better-sqlite3');
+const Database = require('libsql');
 const path = require('path');
 const fs = require('fs');
 
 const DB_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
-const db = new Database(path.join(DB_DIR, 'committee.db'));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+const DB_FILE = path.join(DB_DIR, 'committee.db');
+const TURSO_URL = process.env.TURSO_DATABASE_URL;
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN;
+
+let db;
+if (TURSO_URL) {
+  // 클라우드(Turso) 임베디드 복제 모드.
+  // 쓰기는 클라우드 원본 DB로 즉시 전송되어 영구 보존되고(재배포·재시작에도 안 사라짐),
+  // 읽기는 로컬 복제본에서 처리한다. Render 무료 플랜의 임시 디스크 문제를 해결한다.
+  db = new Database(DB_FILE, {
+    syncUrl: TURSO_URL,
+    authToken: TURSO_TOKEN,
+    syncInterval: 60,
+  });
+  try {
+    db.sync();
+    db.__syncFailed = false;
+  } catch (e) {
+    db.__syncFailed = true;
+    console.error('[db] 초기 동기화 실패:', e.message);
+  }
+  db.__cloudMode = true;
+  console.log('[db] Turso 클라우드 연결됨 (임베디드 복제) — 데이터가 영구 보존됩니다');
+} else {
+  // 로컬 파일 모드 (개발용 / 클라우드 미설정).
+  db = new Database(DB_FILE);
+  try { db.pragma('journal_mode = WAL'); } catch (e) {}
+  db.__cloudMode = false;
+  db.__syncFailed = false;
+  console.log('[db] 로컬 SQLite 파일 사용 (TURSO_DATABASE_URL 미설정)');
+}
+try { db.pragma('foreign_keys = ON'); } catch (e) {}
 
 const schema = `
 CREATE TABLE IF NOT EXISTS operators (
