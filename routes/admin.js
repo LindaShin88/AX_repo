@@ -12,6 +12,58 @@ const hansungOc = require('../services/hansung_oc');
 const hansungDirectory = require('../services/hansung_directory');
 const mailer = require('../services/mailer');
 
+// ── 위원 시간표 주간 매트릭스 ────────────────────────────────────────────────
+// 위원회 상세 화면에서 "회의 일정을 잡기 전에" 빈 시간대를 한눈에 보기 위한 집계.
+// DB에 이미 캐시된 시간표(timetable_cache)만 사용하므로 크롤링 없이 즉시 계산된다.
+const MATRIX_DAYS = [1, 2, 3, 4, 5];                              // 월~금
+const MATRIX_DAY_LABELS = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금' };
+const MATRIX_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17];        // 각 1시간 칸 (09:00~18:00)
+
+function buildTimetableMatrix(members) {
+  const parsed = members.map(m => {
+    let tt = [];
+    if (m.timetable_cache) {
+      try { const a = JSON.parse(m.timetable_cache); if (Array.isArray(a)) tt = a; } catch (e) {}
+    }
+    return { id: m.id, name: m.name, type: m.type, tt };
+  });
+  const withData = parsed.filter(p => p.tt.length > 0);
+  const noData = parsed.filter(p => p.tt.length === 0);
+
+  const cells = {};
+  for (const day of MATRIX_DAYS) {
+    cells[day] = {};
+    for (const h of MATRIX_HOURS) {
+      const cellStart = h * 60;
+      const cellEnd = (h + 1) * 60;
+      const busy = [];
+      for (const p of withData) {
+        let conflict = null;
+        for (const cls of p.tt) {
+          if (cls.day !== day) continue;
+          const [sh, sm] = String(cls.start).split(':').map(Number);
+          const [eh, em] = String(cls.end).split(':').map(Number);
+          if (isNaN(sh) || isNaN(eh)) continue;
+          const cs = sh * 60 + (sm || 0);
+          const ce = eh * 60 + (em || 0);
+          if (cellStart < ce && cellEnd > cs) { conflict = cls; break; }
+        }
+        if (conflict) busy.push({ name: p.name, title: conflict.title || '수업' });
+      }
+      cells[day][h] = busy;
+    }
+  }
+  return {
+    days: MATRIX_DAYS,
+    dayLabels: MATRIX_DAY_LABELS,
+    hours: MATRIX_HOURS,
+    cells,
+    totalWithData: withData.length,
+    totalMembers: parsed.length,
+    noDataNames: noData.map(p => p.name),
+  };
+}
+
 const UPLOAD_DIR = path.join(__dirname, '..', 'data', 'timetables');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const upload = multer({
@@ -170,8 +222,9 @@ router.get('/committees/:id', (req, res) => {
   const memberAddIssue = req.session.lastMemberAddIssue && req.session.lastMemberAddIssue.committeeId === committee.id
     ? req.session.lastMemberAddIssue : null;
   if (memberAddIssue) delete req.session.lastMemberAddIssue;
+  const timetableMatrix = buildTimetableMatrix(members);
   res.render('admin/committee_detail', {
-    committee, members, meetings,
+    committee, members, meetings, timetableMatrix,
     fromNewMeeting: req.query.from === 'new-meeting',
     syncResult,
     autoCrawl,

@@ -375,5 +375,90 @@
       </div>
     </div>
   </div>
+
+  <%
+    const tm = locals.timetableMatrix;
+    function cellClass(busy, total) {
+      if (total === 0) return 'bg-slate-50 text-slate-300';
+      const r = busy / total;
+      if (busy === 0) return 'bg-emerald-100 text-emerald-800 font-semibold';
+      if (r <= 0.25) return 'bg-lime-100 text-lime-800';
+      if (r <= 0.5) return 'bg-amber-100 text-amber-800';
+      if (r <= 0.75) return 'bg-orange-200 text-orange-900';
+      return 'bg-red-200 text-red-900';
+    }
+  %>
+  <div class="bg-white border rounded-xl p-5 mt-6">
+    <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+      <h2 class="font-bold text-slate-900">🗓️ 위원 시간표 한눈에 보기 <span class="text-sm font-normal text-slate-500">— 회의 잡기 전 빈 시간대 확인</span></h2>
+      <a href="/admin/committees/<%= committee.id %>/meetings/new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap">+ 새 회의 일정 잡기</a>
+    </div>
+
+    <% if (tm.totalWithData === 0) { %>
+      <div class="bg-slate-50 border border-slate-200 rounded-lg px-4 py-6 text-center text-sm text-slate-500 mt-2">
+        아직 시간표가 등록된 위원이 없어요.<br>
+        교원을 추가하면 한성대 OC 시간표가 자동 연결되고, 직원·학생·외부위원은 위원 카드의 📅 버튼에서 시간표를 등록할 수 있어요.
+      </div>
+    <% } else { %>
+      <p class="text-xs text-slate-500 mb-3">
+        시간표 등록된 위원 <strong><%= tm.totalWithData %></strong>명 기준 · 칸의 숫자는 그 시간대에 <strong>수업이 있는</strong> 위원 수예요.
+        <span class="text-emerald-700 font-medium">초록(전원 가능)</span>일수록 회의 잡기 좋아요. 칸에 마우스를 올리면 누가 바쁜지 보여요.
+      </p>
+
+      <div class="overflow-x-auto">
+        <table class="border-collapse text-center select-none" style="min-width:560px">
+          <thead>
+            <tr>
+              <th class="w-16 text-xs text-slate-400 font-normal"></th>
+              <% tm.days.forEach(d => { %>
+                <th class="px-2 py-1.5 text-sm font-semibold text-slate-700"><%= tm.dayLabels[d] %></th>
+              <% }) %>
+            </tr>
+          </thead>
+          <tbody>
+            <% tm.hours.forEach(h => { %>
+              <tr>
+                <td class="text-xs text-slate-500 pr-2 text-right whitespace-nowrap"><%= String(h).padStart(2,'0') %>:00</td>
+                <% tm.days.forEach(d => { %>
+                  <%
+                    const busyList = tm.cells[d][h] || [];
+                    const busy = busyList.length;
+                    const free = tm.totalWithData - busy;
+                    let tip;
+                    if (busy === 0) {
+                      tip = `${tm.dayLabels[d]} ${String(h).padStart(2,'0')}:00~${String(h+1).padStart(2,'0')}:00 · 전원 가능 (${free}명)`;
+                    } else {
+                      tip = `${tm.dayLabels[d]} ${String(h).padStart(2,'0')}:00~${String(h+1).padStart(2,'0')}:00 · 가능 ${free}명 / 수업중 ${busy}명\n` +
+                            busyList.map(b => `· ${b.name} (${b.title})`).join('\n');
+                    }
+                  %>
+                  <td class="border border-white p-0.5">
+                    <div class="<%= cellClass(busy, tm.totalWithData) %> rounded h-9 flex items-center justify-center text-xs cursor-default" title="<%= tip %>">
+                      <% if (busy === 0) { %>✓<% } else { %><%= busy %><% } %>
+                    </div>
+                  </td>
+                <% }) %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex items-center gap-3 mt-3 text-[11px] text-slate-500 flex-wrap">
+        <span class="font-medium">범례:</span>
+        <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300"></span>전원 가능</span>
+        <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-lime-100 border border-lime-300"></span>거의 가능</span>
+        <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-amber-100 border border-amber-300"></span>절반</span>
+        <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-orange-200 border border-orange-300"></span>다수 수업</span>
+        <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-200 border border-red-300"></span>대부분 수업</span>
+      </div>
+
+      <% if (tm.noDataNames.length > 0) { %>
+        <p class="text-[11px] text-slate-400 mt-2">
+          ※ 시간표 미등록 <%= tm.noDataNames.length %>명(<%= tm.noDataNames.join(', ') %>)은 이 표에 반영되지 않았어요. 보통 직원·학생·외부위원이며, 필요하면 위원 카드에서 시간표를 등록하세요.
+        </p>
+      <% } %>
+    <% } %>
+  </div>
 </main>
 </body></html>
