@@ -1,3 +1,8 @@
+// Render 등 일부 호스트는 외부 IPv6 라우팅이 안 돼, smtp.gmail.com이 IPv6 주소로
+// 잡히면 메일 연결이 ENETUNREACH로 실패한다. IPv4 우선 조회로 강제해 해결한다.
+const dns = require('dns');
+if (typeof dns.setDefaultResultOrder === 'function') dns.setDefaultResultOrder('ipv4first');
+
 const express = require('express');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');

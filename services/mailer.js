@@ -1,6 +1,10 @@
 const nodemailer = require('nodemailer');
 const db = require('../database');
 
+// IPv6 라우팅이 막힌 호스트(Render 등)에서 smtp.gmail.com 연결이 ENETUNREACH로
+// 실패하는 것을 막기 위해 IPv4 우선 DNS 조회를 강제한다.
+try { require('dns').setDefaultResultOrder('ipv4first'); } catch (e) {}
+
 function getSmtpConfig() {
   // 컬럼명 'key'가 예약어성이라 일부 드라이버(Turso/libsql 임베디드 복제)에서
   // 행 객체에 .key 프로퍼티가 안 잡히는 경우가 있어 별칭(k, v)으로 받고 방어 처리한다.

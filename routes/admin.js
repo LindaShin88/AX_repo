@@ -1214,7 +1214,6 @@ router.get('/meetings/:id/sms-send', (req, res) => {
     JOIN members m ON m.id = n.member_id
     WHERE n.meeting_id = ? AND n.channel = 'sms'
       AND n.type IN (?, 'reminder', 'meeting_confirmed', 'signature_request')
-      AND m.phone IS NOT NULL
     ORDER BY n.sent_at DESC
   `).all(meeting.id, purpose === 'availability' ? 'availability_request' : purpose);
   const seen = new Map();

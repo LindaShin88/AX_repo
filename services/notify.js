@@ -81,7 +81,9 @@ function pickChannels(meeting, member) {
   const result = [];
   for (const ch of channels) {
     if (ch === 'email' && member.email) result.push({ channel: 'email', recipient: member.email });
-    if (ch === 'sms' && member.phone) result.push({ channel: 'sms', recipient: member.phone });
+    // SMS는 자동 발송이 아니라 운영자가 복사해 직접 보내므로, 전화번호가 없어도
+    // 복사용 문자 텍스트는 항상 생성한다(번호는 운영자가 채워 보냄).
+    if (ch === 'sms') result.push({ channel: 'sms', recipient: member.phone || null });
   }
   if (result.length === 0) {
     if (member.email) result.push({ channel: 'email', recipient: member.email });
