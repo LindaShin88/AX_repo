@@ -2,9 +2,16 @@ const nodemailer = require('nodemailer');
 const db = require('../database');
 
 function getSmtpConfig() {
-  const rows = db.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'smtp_%'").all();
+  // 컬럼명 'key'가 예약어성이라 일부 드라이버(Turso/libsql 임베디드 복제)에서
+  // 행 객체에 .key 프로퍼티가 안 잡히는 경우가 있어 별칭(k, v)으로 받고 방어 처리한다.
+  const rows = db.prepare("SELECT key AS k, value AS v FROM app_settings WHERE key LIKE 'smtp_%'").all();
   const cfg = {};
-  for (const r of rows) cfg[r.key.replace(/^smtp_/, '')] = r.value;
+  for (const r of rows) {
+    if (!r) continue;
+    const k = r.k != null ? r.k : (Array.isArray(r) ? r[0] : undefined);
+    const v = r.v !== undefined ? r.v : (Array.isArray(r) ? r[1] : undefined);
+    if (typeof k === 'string') cfg[k.replace(/^smtp_/, '')] = v;
+  }
   if (!cfg.host) cfg.host = process.env.SMTP_HOST || '';
   if (!cfg.port) cfg.port = process.env.SMTP_PORT || '';
   if (!cfg.user) cfg.user = process.env.SMTP_USER || '';
