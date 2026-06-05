@@ -43,20 +43,34 @@ function isSmtpConfigured() {
 
 let cachedTransport = null;
 let cachedSignature = '';
-function buildTransport() {
+async function buildTransport() {
   const c = getSmtpConfig();
   const sig = JSON.stringify(c);
   if (cachedTransport && cachedSignature === sig) return { transport: cachedTransport, cfg: c };
   if (!isSmtpConfigured()) return { transport: null, cfg: c };
+
+  // nodemailer가 family:4를 무시하고 IPv6로 붙으려다 Render에서 ENETUNREACH로
+  // 실패하는 문제를, 호스트명을 직접 IPv4 주소로 해석해 꽂아 원천 차단한다.
+  // (IP로 접속하되 TLS 인증서 검증은 원래 호스트명으로 하도록 servername 지정)
+  let host = c.host;
+  const servername = c.host;
+  try {
+    // OS 리졸버(getaddrinfo)로 IPv4 주소만 받아 직접 꽂는다. resolve4(직접 DNS질의)보다
+    // 환경 제약에 강함. 실패하면 원래 호스트명으로 폴백.
+    const r = await require('dns').promises.lookup(c.host, { family: 4 });
+    if (r && r.address) host = r.address;
+  } catch (e) { /* 해석 실패 시 원래 호스트명으로 시도 */ }
+
   cachedTransport = nodemailer.createTransport({
-    host: c.host,
+    host,
     port: parseInt(c.port) || 587,
     secure: c.secure === 'true',
     auth: { user: c.user, pass: c.pass },
-    family: 4,                  // IPv4 강제 (Render의 IPv6 ENETUNREACH 회피)
+    family: 4,                  // IPv4 강제 (보조 안전장치)
     connectionTimeout: 15000,   // 연결 대기 한도
     greetingTimeout: 10000,     // 서버 인사 대기 한도
     socketTimeout: 20000,       // 발송 중 소켓 무응답 한도(행 방지)
+    tls: { servername },        // IP 접속이어도 인증서는 원래 호스트명으로 검증
   });
   cachedSignature = sig;
   return { transport: cachedTransport, cfg: c };
@@ -82,7 +96,7 @@ function extractEmailAddress(s) {
 
 async function sendMail({ to, subject, text, html, fromName }) {
   if (!to) return { ok: false, reason: 'no-recipient' };
-  const { transport, cfg } = buildTransport();
+  const { transport, cfg } = await buildTransport();
   if (!transport) return { ok: false, reason: 'smtp-not-configured' };
   try {
     // 발신 주소는 인증된 공용 계정으로 고정하되, fromName이 있으면 표시 이름만 바꾼다.
@@ -106,7 +120,7 @@ async function sendMail({ to, subject, text, html, fromName }) {
 }
 
 async function verifySmtp() {
-  const { transport, cfg } = buildTransport();
+  const { transport, cfg } = await buildTransport();
   if (!transport) return { ok: false, reason: 'smtp-not-configured', cfg };
   try {
     await transport.verify();
