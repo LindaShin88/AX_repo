@@ -53,6 +53,10 @@ function buildTransport() {
     port: parseInt(c.port) || 587,
     secure: c.secure === 'true',
     auth: { user: c.user, pass: c.pass },
+    family: 4,                  // IPv4 강제 (Render의 IPv6 ENETUNREACH 회피)
+    connectionTimeout: 15000,   // 연결 대기 한도
+    greetingTimeout: 10000,     // 서버 인사 대기 한도
+    socketTimeout: 20000,       // 발송 중 소켓 무응답 한도(행 방지)
   });
   cachedSignature = sig;
   return { transport: cachedTransport, cfg: c };
