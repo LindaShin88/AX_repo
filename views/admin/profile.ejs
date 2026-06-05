@@ -24,6 +24,13 @@
         <label class="text-slate-500 w-24 shrink-0">이메일</label>
         <input name="email" type="email" value="<%= operator.email || '' %>" required class="flex-1 border rounded-lg px-3 py-2 text-sm">
       </div>
+      <div class="flex items-start gap-2">
+        <label class="text-slate-500 w-24 shrink-0 pt-2">발신자 이름</label>
+        <div class="flex-1">
+          <input name="mail_sender_name" value="<%= operator.mail_sender_name || '' %>" placeholder="예: 학사팀 신소영 (비우면 기본값 사용)" class="w-full border rounded-lg px-3 py-2 text-sm">
+          <p class="text-[11px] text-slate-400 mt-1">위원에게 메일이 갈 때 표시되는 보내는 사람 이름이에요. 메일 주소는 공용 발송 계정으로 동일하지만, 이름은 운영자마다 다르게 보여요. (비우면 시스템 기본 발신자명 사용)</p>
+        </div>
+      </div>
       <div><span class="text-slate-500 w-24 inline-block">권한</span>
         <% if (operator.role === 'super_admin') { %><span class="badge badge-violet">시스템 관리자</span>
         <% } else { %><span class="badge badge-blue">운영자</span><% } %>

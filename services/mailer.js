@@ -66,14 +66,27 @@ function textToHtml(text) {
     .replace(/\n/g, '<br>');
 }
 
-async function sendMail({ to, subject, text, html }) {
+function extractEmailAddress(s) {
+  if (!s) return '';
+  const m = String(s).match(/<([^>]+)>/);
+  return (m ? m[1] : String(s)).trim();
+}
+
+async function sendMail({ to, subject, text, html, fromName }) {
   if (!to) return { ok: false, reason: 'no-recipient' };
   const { transport, cfg } = buildTransport();
   if (!transport) return { ok: false, reason: 'smtp-not-configured' };
   try {
+    // 발신 주소는 인증된 공용 계정으로 고정하되, fromName이 있으면 표시 이름만 바꾼다.
+    let fromHeader = cfg.from || cfg.user;
+    if (fromName) {
+      const addr = extractEmailAddress(cfg.from || cfg.user) || cfg.user;
+      const safeName = String(fromName).replace(/["\r\n]/g, '').trim();
+      if (safeName && addr) fromHeader = `"${safeName}" <${addr}>`;
+    }
     const finalHtml = html || (text ? `<div style="font-family:'Pretendard','맑은 고딕',sans-serif;line-height:1.6;color:#1f2937;">${textToHtml(text)}</div>` : '');
     const info = await transport.sendMail({
-      from: cfg.from || cfg.user,
+      from: fromHeader,
       to, subject,
       text: text || (html ? html.replace(/<[^>]+>/g, '') : ''),
       html: finalHtml,

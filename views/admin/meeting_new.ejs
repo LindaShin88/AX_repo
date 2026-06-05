@@ -307,6 +307,31 @@
       </ul>
     </div>
 
+    <section class="bg-white border rounded-xl p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="font-bold text-slate-900">4. 발송 메시지 미리보기</h2>
+        <button type="button" onclick="buildPreview()" class="text-sm border bg-white hover:bg-slate-50 rounded-lg px-3 py-1.5">🔄 새로고침</button>
+      </div>
+      <p class="text-xs text-slate-500">위원들에게 실제로 발송될 메일·문자 예시예요. <strong>위원별 고유 응답 링크는 발송 시 자동으로 삽입</strong>됩니다.</p>
+
+      <div id="preview-email-wrap">
+        <div class="text-sm font-semibold text-slate-700 mb-1">📧 이메일</div>
+        <div class="border rounded-lg overflow-hidden">
+          <div class="bg-slate-50 border-b px-3 py-2 text-xs text-slate-600">제목: <span id="prev-email-subject" class="font-medium text-slate-800"></span></div>
+          <pre id="prev-email-body" class="p-3 text-sm whitespace-pre-wrap font-sans text-slate-800 m-0 bg-white"></pre>
+        </div>
+      </div>
+
+      <div id="preview-sms-wrap">
+        <div class="flex items-center justify-between mb-1">
+          <div class="text-sm font-semibold text-slate-700">📱 SMS</div>
+          <button type="button" onclick="copySmsPreview(this)" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded px-3 py-1.5 font-semibold">📋 SMS 복사</button>
+        </div>
+        <pre id="prev-sms-body" class="bg-slate-50 border rounded-lg p-3 text-sm whitespace-pre-wrap font-sans text-slate-800 m-0"></pre>
+        <div class="text-[11px] text-slate-400 mt-1">글자수: <strong><span id="prev-sms-count"></span></strong> · 복사해서 문자 발송 시스템에 붙여넣으세요. (회의 생성 후 [SMS 수동 발송] 화면에서 위원별 개별 링크가 들어간 버전도 받을 수 있어요)</div>
+      </div>
+    </section>
+
     <div class="flex gap-2">
       <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold">회의 생성 및 일정 조율 시작</button>
       <a href="/admin/committees/<%= committee.id %>" onclick="clearDraft(false)" class="px-5 py-2.5 rounded-lg border hover:bg-slate-50">취소</a>
@@ -370,5 +395,50 @@ form.addEventListener('change', saveDraft);
 form.addEventListener('submit', () => { try { localStorage.removeItem(DRAFT_KEY); } catch(e) {} });
 
 restoreDraft();
+
+// ── 발송 메시지 미리보기 ───────────────────────────────────────────
+const PREVIEW_COMMITTEE = <%- JSON.stringify(committee.name) %>;
+const PREVIEW_BASE = <%- JSON.stringify(previewBaseUrl || '') %>;
+
+function previewChannels() {
+  return [...document.querySelectorAll('input[name="notify_channels"]:checked')].map(c => c.value);
+}
+
+function buildPreview() {
+  const titleEl = document.querySelector('input[name="title"]');
+  const title = (titleEl && titleEl.value.trim()) || '(회의명 미입력)';
+  const base = (PREVIEW_BASE || '').replace(/\/+$/, '');
+  const sampleLink = base + '/avail/[위원별-고유링크-자동삽입]';
+  const channels = previewChannels();
+
+  const emailWrap = document.getElementById('preview-email-wrap');
+  if (channels.includes('email')) {
+    emailWrap.style.display = '';
+    document.getElementById('prev-email-subject').textContent = `[${PREVIEW_COMMITTEE}] ${title} 가능일정 회신 요청`;
+    document.getElementById('prev-email-body').textContent =
+      `○○○ 위원님, 안녕하세요.\n"${title}" 회의 일정 조율을 위해 가능 일정을 확인 부탁드립니다.\n\n별도 로그인 없이 아래 링크에서 1분 안에 응답 가능합니다.\n${sampleLink}\n\n감사합니다.`;
+  } else { emailWrap.style.display = 'none'; }
+
+  const smsWrap = document.getElementById('preview-sms-wrap');
+  if (channels.includes('sms')) {
+    smsWrap.style.display = '';
+    const sms = `[${PREVIEW_COMMITTEE}]\n위원님, "${title}" 가능일정 회신 부탁드립니다.\n로그인 불필요: ${sampleLink}`;
+    document.getElementById('prev-sms-body').textContent = sms;
+    document.getElementById('prev-sms-count').textContent = sms.length + '자';
+  } else { smsWrap.style.display = 'none'; }
+}
+
+function copySmsPreview(btn) {
+  const text = document.getElementById('prev-sms-body').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const old = btn.textContent;
+    btn.textContent = '✓ 복사됨';
+    setTimeout(() => { btn.textContent = old; }, 1500);
+  });
+}
+
+form.addEventListener('input', buildPreview);
+form.addEventListener('change', buildPreview);
+buildPreview();
 </script>
 </body></html>

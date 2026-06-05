@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const db = require('../database');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireSuperAdmin } = require('../middleware/auth');
 const { parseUploadedFile } = require('../services/timetable_parser');
 const { fetchTimetableRaw, fcEventsToTimetable } = require('../services/timetable');
 const hansungOc = require('../services/hansung_oc');
@@ -561,7 +561,7 @@ router.get('/lookup-professor', async (req, res) => {
   }
 });
 
-router.get('/settings/smtp', (req, res) => {
+router.get('/settings/smtp', requireSuperAdmin, (req, res) => {
   const cfg = mailer.getSmtpConfig();
   res.render('admin/smtp_settings', {
     cfg,
@@ -573,7 +573,7 @@ router.get('/settings/smtp', (req, res) => {
   delete req.session.smtpFlash;
 });
 
-router.post('/settings/smtp/save', (req, res) => {
+router.post('/settings/smtp/save', requireSuperAdmin, (req, res) => {
   mailer.setSmtpConfig({
     host: req.body.host || '',
     port: req.body.port || '587',
@@ -589,7 +589,7 @@ router.post('/settings/smtp/save', (req, res) => {
   res.redirect('/admin/settings/smtp');
 });
 
-router.post('/settings/smtp/test', async (req, res) => {
+router.post('/settings/smtp/test', requireSuperAdmin, async (req, res) => {
   const verify = await mailer.verifySmtp();
   if (!verify.ok) {
     req.session.smtpFlash = { kind: 'err', message: `SMTP 검증 실패: ${verify.reason} ${verify.error || ''}` };
@@ -625,7 +625,8 @@ router.get('/committees/:id/meetings/new', async (req, res) => {
     .get(req.params.id, req.session.operatorId);
   if (!committee) return res.status(404).send('Not found');
   const members = db.prepare('SELECT * FROM members WHERE committee_id = ?').all(committee.id);
-  res.render('admin/meeting_new', { committee, members, defaults: defaultConstraints() });
+  const previewBaseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+  res.render('admin/meeting_new', { committee, members, defaults: defaultConstraints(), previewBaseUrl });
 });
 
 router.post('/committees/:id/meetings', async (req, res) => {

@@ -194,6 +194,7 @@ ensureColumn('operators', 'status', "TEXT DEFAULT 'active'");
 ensureColumn('operators', 'approved_by', 'INTEGER');
 ensureColumn('operators', 'approved_at', 'DATETIME');
 ensureColumn('operators', 'rejection_reason', 'TEXT');
+ensureColumn('operators', 'mail_sender_name', 'TEXT');
 
 ensureColumn('members', 'timetable_meta', 'TEXT');
 

@@ -52,13 +52,27 @@ function logNotification({ meetingId, memberId = null, type, channel = 'email', 
   return stmt.run(meetingId, memberId, type, channel, subject, decorated).lastInsertRowid;
 }
 
-async function deliverEmail(member, subject, content) {
+// 회의를 만든 운영자가 프로필에 설정한 "발신자 이름"을 찾는다(없으면 null → 시스템 기본값).
+function getSenderNameForMeeting(meeting) {
+  if (!meeting || !meeting.committee_id) return null;
+  try {
+    const row = db.prepare(`
+      SELECT o.mail_sender_name AS n
+        FROM committees c JOIN operators o ON o.id = c.operator_id
+       WHERE c.id = ?
+    `).get(meeting.committee_id);
+    return row && row.n ? row.n : null;
+  } catch (e) { return null; }
+}
+
+async function deliverEmail(member, subject, content, fromName = null) {
   if (!member.email) return { ok: false, reason: 'no-email' };
   if (!mailer.isSmtpConfigured()) return { ok: false, reason: 'smtp-not-configured' };
   return await mailer.sendMail({
     to: member.email,
     subject,
     text: content,
+    fromName,
   });
 }
 
@@ -78,18 +92,19 @@ function pickChannels(meeting, member) {
 
 async function sendAvailabilityRequest(meeting, member, token, baseUrl) {
   const link = `${baseUrl}/avail/${token}`;
+  const fromName = getSenderNameForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
     let subject, content;
     if (channel === 'sms') {
       subject = `[${meeting.committee_name}] 가능일정 회신 요청`;
-      content = `[${meeting.committee_name}]\n${member.name} 위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n로그인 불필요: ${link}`;
+      content = `[${meeting.committee_name}]\n위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n로그인 불필요: ${link}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'availability_request', channel, subject, content, status: 'SMS는 운영자가 직접 발송' }));
     } else {
       subject = `[${meeting.committee_name}] ${meeting.title} 가능일정 회신 요청`;
       content = `${member.name} 위원님, 안녕하세요.\n"${meeting.title}" 회의 일정 조율을 위해 가능 일정을 확인 부탁드립니다.\n\n별도 로그인 없이 아래 링크에서 1분 안에 응답 가능합니다.\n${link}\n\n감사합니다.`;
-      const result = await deliverEmail(member, subject, content);
+      const result = await deliverEmail(member, subject, content, fromName);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'availability_request', channel, subject, content, status }));
     }
@@ -103,18 +118,19 @@ async function sendAvailabilityRequest(meeting, member, token, baseUrl) {
 
 async function sendReminder(meeting, member, token, baseUrl) {
   const link = `${baseUrl}/avail/${token}`;
+  const fromName = getSenderNameForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
     let subject, content;
     if (channel === 'sms') {
       subject = `[리마인드] ${meeting.title}`;
-      content = `[리마인드] ${member.name} 위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n${link}`;
+      content = `[리마인드] 위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n${link}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'reminder', channel, subject, content, status: 'SMS는 운영자가 직접 발송' }));
     } else {
       subject = `[리마인드] ${meeting.title} 가능일정 회신 부탁드립니다`;
       content = `${member.name} 위원님, 아직 "${meeting.title}" 회의 가능 일정 응답이 확인되지 않습니다.\n빠른 회신 부탁드립니다.\n${link}`;
-      const result = await deliverEmail(member, subject, content);
+      const result = await deliverEmail(member, subject, content, fromName);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'reminder', channel, subject, content, status }));
     }
@@ -127,6 +143,7 @@ async function sendReminder(meeting, member, token, baseUrl) {
 }
 
 async function sendMeetingConfirmed(meeting, member, slot) {
+  const fromName = getSenderNameForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const announcement = buildConfirmedAnnouncement(meeting, slot);
   const ids = [];
@@ -139,7 +156,7 @@ async function sendMeetingConfirmed(meeting, member, slot) {
     } else {
       subject = `[${meeting.committee_name}] ${meeting.title} 일정 확정 안내`;
       content = `${member.name} 위원님, 안녕하세요.\n\n${announcement}`;
-      const result = await deliverEmail(member, subject, content);
+      const result = await deliverEmail(member, subject, content, fromName);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'meeting_confirmed', channel, subject, content, status }));
     }
@@ -151,7 +168,7 @@ async function sendCreatorConfirmation(meeting, operator, slot, baseUrl) {
   const announcement = buildConfirmedAnnouncement(meeting, slot);
   const subject = `[자동확정] ${meeting.title} — 회의 일정 확정 안내`;
   const content = `${operator.name} 운영자님, 안녕하세요.\n\n"${meeting.title}" 회의 일정이 모든 위원의 응답에 따라 자동으로 확정되었습니다.\n전체 위원에게 확정 메일이 발송되었습니다.\n\n${announcement}\n\n──────── 📱 SMS / 카톡 전달용 ────────\n${announcement}\n──────────────────────────────\n\n관리자 페이지: ${baseUrl}/admin/meetings/${meeting.id}\n감사합니다.`;
-  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content);
+  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderNameForMeeting(meeting));
   const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
   return logNotification({ meetingId: meeting.id, memberId: null, type: 'creator_confirmed', channel: 'email', subject, content, status });
 }
@@ -172,7 +189,7 @@ async function sendCreatorTieChoice(meeting, operator, topSlots, baseUrl) {
     `감사합니다.`,
   ];
   const content = lines.join('\n');
-  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content);
+  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderNameForMeeting(meeting));
   const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
   return logNotification({ meetingId: meeting.id, memberId: null, type: 'creator_tie', channel: 'email', subject, content, status });
 }
@@ -231,13 +248,14 @@ async function maybeAutoConfirmMeeting(meetingId, baseUrl) {
 async function sendSignatureRequest(meeting, member, token, baseUrl, opts = {}) {
   const link = `${baseUrl}/sign/${token}`;
   const minutesLink = opts.hasUploadedMinutes ? `${baseUrl}/minutes/${token}` : null;
+  const fromName = getSenderNameForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
     let subject, content;
     if (channel === 'sms') {
       subject = `[서명요청] ${meeting.title}`;
-      content = `[${meeting.committee_name}] ${member.name} 위원님, "${meeting.title}" 회의록 전자서명 부탁드립니다.\n${link}`;
+      content = `[${meeting.committee_name}] 위원님, "${meeting.title}" 회의록 전자서명 부탁드립니다.\n${link}`;
       if (minutesLink) content += `\n회의록: ${minutesLink}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_request', channel, subject, content, status: 'SMS는 운영자가 직접 발송' }));
     } else {
@@ -252,7 +270,7 @@ async function sendSignatureRequest(meeting, member, token, baseUrl, opts = {}) 
         parts.push(`▶ 회의록 파일 다운로드: ${minutesLink}`);
       }
       content = parts.join('\n');
-      const result = await deliverEmail(member, subject, content);
+      const result = await deliverEmail(member, subject, content, fromName);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_request', channel, subject, content, status }));
     }
@@ -263,13 +281,14 @@ async function sendSignatureRequest(meeting, member, token, baseUrl, opts = {}) 
 async function sendSignatureReminder(meeting, member, token, baseUrl, opts = {}) {
   const link = `${baseUrl}/sign/${token}`;
   const minutesLink = opts.hasUploadedMinutes ? `${baseUrl}/minutes/${token}` : null;
+  const fromName = getSenderNameForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
     let subject, content;
     if (channel === 'sms') {
       subject = `[서명 리마인드] ${meeting.title}`;
-      content = `[리마인드][${meeting.committee_name}] ${member.name} 위원님, "${meeting.title}" 회의록 전자서명을 아직 받지 못했습니다. 빠른 진행 부탁드립니다.\n${link}`;
+      content = `[리마인드][${meeting.committee_name}] 위원님, "${meeting.title}" 회의록 전자서명을 아직 받지 못했습니다. 빠른 진행 부탁드립니다.\n${link}`;
       if (minutesLink) content += `\n회의록: ${minutesLink}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_reminder', channel, subject, content, status: 'SMS는 운영자가 직접 발송' }));
     } else {
@@ -285,7 +304,7 @@ async function sendSignatureReminder(meeting, member, token, baseUrl, opts = {})
       if (minutesLink) parts.push(`▶ 회의록 파일 다운로드: ${minutesLink}`);
       parts.push('', '바쁘신 와중에 죄송하지만 확인 부탁드립니다.', '감사합니다.');
       content = parts.join('\n');
-      const result = await deliverEmail(member, subject, content);
+      const result = await deliverEmail(member, subject, content, fromName);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_reminder', channel, subject, content, status }));
     }
