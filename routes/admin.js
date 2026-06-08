@@ -634,18 +634,22 @@ router.post('/committees/:id/meetings', async (req, res) => {
   const committeeId = req.params.id;
   const morningHours = [].concat(req.body.morning_hours || []).map(parseTimeToken).filter(Boolean);
   const afternoonHours = [].concat(req.body.afternoon_hours || []).map(parseTimeToken).filter(Boolean);
+  // 오전/오후 중 하나라도 고르면 그 선택만 사용. 둘 다 비었을 때만 기본값 적용.
+  const anyHourSelected = morningHours.length > 0 || afternoonHours.length > 0;
+  const finalMorningHours = anyHourSelected ? morningHours : [{ h: 10, m: 0 }];
+  const finalAfternoonHours = anyHourSelected ? afternoonHours : [{ h: 14, m: 0 }, { h: 15, m: 0 }];
   const constraints = {
     window: {
       start: normalizeDate(req.body.window_start) || req.body.window_start,
       end: normalizeDate(req.body.window_end) || req.body.window_end,
     },
     excludedDates: (req.body.excluded_dates || '').split(/[\s,]+/).map(normalizeDate).filter(Boolean),
-    morningHours: morningHours.length > 0 ? morningHours : [{ h: 10, m: 0 }],
-    afternoonHours: afternoonHours.length > 0 ? afternoonHours : [{ h: 14, m: 0 }, { h: 15, m: 0 }],
+    morningHours: finalMorningHours,
+    afternoonHours: finalAfternoonHours,
     dateOverrides: parseDateOverrides(
       req.body.date_overrides,
-      morningHours.length > 0 ? morningHours : [{ h: 10, m: 0 }],
-      afternoonHours.length > 0 ? afternoonHours : [{ h: 14, m: 0 }, { h: 15, m: 0 }],
+      finalMorningHours,
+      finalAfternoonHours,
     ),
   };
   const channelsArr = [].concat(req.body.notify_channels || ['email','sms']);
