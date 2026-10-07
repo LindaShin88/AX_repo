@@ -78,6 +78,11 @@
         ⚠️ 이름은 필수 입력 항목입니다.
       </div>
       <% } %>
+      <% if (locals.errFlag === 'duplicate-member') { %>
+      <div class="mb-4 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg px-3 py-2 text-sm">
+        ⚠️ <strong><%= locals.dupName || '해당' %></strong> 님은 이미 이 위원회 명단에 있어요. 중복으로 추가하지 않았습니다.
+      </div>
+      <% } %>
 
       <% if (locals.memberAddIssue) { %>
       <div class="mb-4 bg-indigo-50 border border-indigo-300 text-indigo-900 rounded-lg px-3 py-3 text-sm">

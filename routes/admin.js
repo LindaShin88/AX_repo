@@ -230,6 +230,7 @@ router.get('/committees/:id', (req, res) => {
     autoCrawl,
     memberAddIssue,
     errFlag: req.query.err || null,
+    dupName: req.query.dupname || null,
     committeeUpdated: req.query['committee-updated'] === '1',
     editedMemberId: req.query.edited ? parseInt(req.query.edited) : null,
     deletedMeeting: req.query['deleted-meeting'] || null,
@@ -246,6 +247,14 @@ router.post('/committees/:id/members', async (req, res) => {
   const name = String(req.body.name || '').trim();
   const email = String(req.body.email || '').trim();
   if (!name) return res.redirect(`/admin/committees/${req.params.id}?err=name-required`);
+
+  // 중복 방지: 같은 위원회에 같은 이름의 위원이 이미 있으면 추가하지 않는다.
+  // (현재 교원은 동명이인이 없다는 전제. 동명이인 확인 팝업은 추후 추가 예정)
+  const dup = db.prepare('SELECT id FROM members WHERE committee_id = ? AND name = ?')
+    .get(committee.id, name);
+  if (dup) {
+    return res.redirect(`/admin/committees/${req.params.id}?err=duplicate-member&dupname=${encodeURIComponent(name)}`);
+  }
 
   let type = String(req.body.type || 'faculty').trim();
   if (!VALID_MEMBER_TYPES.has(type)) type = 'faculty';
