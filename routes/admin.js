@@ -245,7 +245,7 @@ router.post('/committees/:id/members', async (req, res) => {
 
   const name = String(req.body.name || '').trim();
   const email = String(req.body.email || '').trim();
-  if (!name || !email) return res.redirect(`/admin/committees/${req.params.id}?err=name-email-required`);
+  if (!name) return res.redirect(`/admin/committees/${req.params.id}?err=name-required`);
 
   let type = String(req.body.type || 'faculty').trim();
   if (!VALID_MEMBER_TYPES.has(type)) type = 'faculty';
@@ -351,7 +351,7 @@ router.post('/committees/:id/members/:memberId/edit', (req, res) => {
 
   const name = String(req.body.name || '').trim();
   const email = String(req.body.email || '').trim();
-  if (!name || !email) return res.redirect(`/admin/committees/${req.params.id}?err=name-email-required`);
+  if (!name) return res.redirect(`/admin/committees/${req.params.id}?err=name-required`);
 
   let type = String(req.body.type || 'faculty').trim();
   if (!VALID_MEMBER_TYPES.has(type)) type = 'faculty';

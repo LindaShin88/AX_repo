@@ -73,9 +73,9 @@
         <span class="text-xs text-slate-400">🤖 교원 추가 시 한성대 시간표 자동 연결</span>
       </div>
 
-      <% if (locals.errFlag === 'name-email-required') { %>
+      <% if (locals.errFlag === 'name-required') { %>
       <div class="mb-4 bg-red-50 border border-red-300 text-red-800 rounded-lg px-3 py-2 text-sm">
-        ⚠️ 이름과 이메일은 필수 입력 항목입니다.
+        ⚠️ 이름은 필수 입력 항목입니다.
       </div>
       <% } %>
 
@@ -179,7 +179,7 @@
             <input id="add-name" name="name" placeholder="이름 *  (교원이면 Enter로 정보 자동 채우기)" required autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault(); if(document.querySelector('input[name=&quot;type&quot;]:checked')?.value==='faculty') lookupProfessor();}" class="flex-1 border rounded-lg px-3 py-2 text-sm">
             <button type="button" id="lookup-btn" onclick="lookupProfessor()" class="bg-sky-600 hover:bg-sky-700 text-white rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap">📡 교원 정보 가져오기</button>
           </div>
-          <input id="add-email" name="email" type="email" placeholder="이메일 *" required autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
+          <input id="add-email" name="email" type="email" placeholder="이메일은 직접 입력해주세요" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
           <input name="role" placeholder="직위/직책 (선택, 예: 위원장, 부총장, 외부전문가)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
           <input id="add-affiliation" name="affiliation" placeholder="소속 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
           <input id="add-sabun" name="sabun" placeholder="사번 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm" data-faculty-staff-student>
@@ -209,7 +209,7 @@
               </label>
             </div>
             <input name="name" placeholder="이름 *" required class="border rounded-lg px-3 py-2 text-sm w-full">
-            <input name="email" type="email" placeholder="이메일 *" required class="border rounded-lg px-3 py-2 text-sm w-full">
+            <input name="email" type="email" placeholder="이메일은 직접 입력해주세요" class="border rounded-lg px-3 py-2 text-sm w-full">
             <div class="grid grid-cols-2 gap-2">
               <input name="role" placeholder="직위/직책" class="border rounded-lg px-3 py-2 text-sm">
               <input name="phone" placeholder="전화번호" class="border rounded-lg px-3 py-2 text-sm">
