@@ -505,22 +505,6 @@
       </div>
     </section>
 
-    <section class="bg-white border rounded-xl p-5">
-      <h2 class="font-bold text-slate-900 mb-3">📋 내부 위원 시간표 (자동 수집)</h2>
-      <div class="space-y-2">
-      <% members.filter(m => m.type === 'faculty' && m.sabun).forEach(m => { %>
-        <details class="border rounded-lg">
-          <summary class="px-3 py-2 cursor-pointer text-sm font-medium hover:bg-slate-50"><%= m.name %> <span class="text-xs text-slate-500">#<%= m.sabun %></span></summary>
-          <div class="p-3 border-t">
-            <a href="<%= getTimetableImageUrl(m.sabun) %>" target="_blank" class="text-xs text-indigo-600 hover:underline">↗ 한성대 공식 시간표 보기</a>
-          </div>
-        </details>
-      <% }) %>
-      <% if (members.filter(m => m.type === 'faculty' && m.sabun).length === 0) { %>
-        <p class="text-sm text-slate-500 text-center py-4">사번이 등록된 내부 위원이 없습니다.</p>
-      <% } %>
-      </div>
-    </section>
   </div>
 
   <% if (meeting.status === 'confirmed' || meeting.status === 'completed') { %>
