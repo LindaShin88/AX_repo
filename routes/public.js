@@ -72,12 +72,30 @@ router.get('/avail/:token', (req, res) => {
 
 router.post('/avail/:token', async (req, res) => {
   const token = db.prepare(`
-    SELECT t.*, mt.id AS meeting_id FROM member_tokens t
+    SELECT t.*, m.name AS member_name, m.role, m.affiliation, m.type AS member_type, m.sabun,
+           mt.id AS meeting_id, mt.title, mt.description, mt.location, mt.duration_minutes,
+           c.name AS committee_name
+    FROM member_tokens t
+    JOIN members m ON m.id = t.member_id
     JOIN meetings mt ON mt.id = t.meeting_id
+    JOIN committees c ON c.id = mt.committee_id
     WHERE t.token = ? AND t.purpose = 'availability'
   `).get(req.params.token);
   if (!token) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
-  const slots = db.prepare('SELECT id FROM meeting_slots WHERE meeting_id = ?').all(token.meeting_id);
+  const slots = db.prepare('SELECT * FROM meeting_slots WHERE meeting_id = ? ORDER BY start_time').all(token.meeting_id);
+
+  // 모든 후보 일정에 응답했는지 검증 — 하나라도 빠지면 저장하지 않고 다시 표시
+  const missing = slots.filter(s => !req.body[`slot_${s.id}`]);
+  if (missing.length > 0) {
+    const picks = slots
+      .filter(s => req.body[`slot_${s.id}`])
+      .map(s => ({ slot_id: s.id, response: req.body[`slot_${s.id}`], auto_filled: 0 }));
+    return res.status(400).render('public/availability', {
+      token, slots, responses: picks,
+      error: `모든 후보 일정에 가능/불가능을 표시해야 제출할 수 있어요. (남은 항목 ${missing.length}개)`,
+    });
+  }
+
   const upsert = db.prepare(`
     INSERT INTO slot_responses (slot_id, member_id, response, auto_filled, note)
     VALUES (?, ?, ?, 0, ?)
