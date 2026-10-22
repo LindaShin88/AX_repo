@@ -495,6 +495,25 @@
         <% } %>
       </div>
       <p class="text-xs text-slate-500 mb-3">아래 링크를 복사해서 직접 SMS/카톡으로 보내실 수 있어요. 이메일은 위원 이메일로 자동 발송 (SMTP 설정 시).</p>
+
+      <% if (locals.groupToken) { %>
+      <div class="mb-4 border border-indigo-200 bg-indigo-50 rounded-xl p-3">
+        <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
+          <span class="text-sm font-semibold text-indigo-900">🔗 공유 투표 링크 (한 번에 발송용)</span>
+          <button type="button" onclick="copyGroupLink(this)" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded px-3 py-1.5 font-semibold whitespace-nowrap">📋 링크 복사</button>
+        </div>
+        <p class="text-xs text-indigo-800 mb-2"><strong>링크 1개</strong>를 위원 전체에게 보내면, 각자 들어가 <strong>본인 이름을 선택</strong>해 투표해요. (별도 기기에서 일괄 SMS 발송에 편리)</p>
+        <code id="group-link" class="block text-xs bg-white border border-indigo-200 rounded px-2 py-1.5 break-all text-slate-700"><%= baseUrl %>/g/<%= groupToken %></code>
+      </div>
+      <script>
+        function copyGroupLink(btn){
+          var el = document.getElementById('group-link');
+          var t = (el ? el.textContent : '').trim();
+          if (!t) return;
+          navigator.clipboard.writeText(t).then(function(){ var o = btn.textContent; btn.textContent = '✓ 복사됨'; setTimeout(function(){ btn.textContent = o; }, 1500); });
+        }
+      </script>
+      <% } %>
       <div class="space-y-2 text-sm">
         <% members.forEach(m => { %>
           <% const t = tokens.find(tt => tt.member_id === m.id && tt.purpose === 'availability'); %>

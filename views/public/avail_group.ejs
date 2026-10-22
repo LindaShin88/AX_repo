@@ -1,0 +1,54 @@
+<%- include('../partials/head', { pageTitle: '일정 투표 · 본인 선택' }) %>
+
+<main class="max-w-xl mx-auto px-4 py-8">
+  <div class="bg-white rounded-2xl shadow-sm border p-6 mb-4">
+    <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
+      <span class="badge badge-violet">로그인 불필요</span>
+      <span>본인 이름만 선택하면 돼요</span>
+    </div>
+    <h1 class="text-base font-bold text-slate-700"><%= meeting.committee_name %></h1>
+    <h2 class="text-2xl font-bold text-slate-900 mt-1"><%= meeting.title %></h2>
+    <% if (meeting.location || meeting.duration_minutes) { %>
+    <p class="text-sm text-slate-500 mt-2">
+      <% if (meeting.location) { %>📍 <%= meeting.location %><% } %>
+      <% if (meeting.duration_minutes) { %><span class="mx-1">·</span>⏱ <%= meeting.duration_minutes %>분<% } %>
+    </p>
+    <% } %>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm border p-6">
+    <h3 class="font-bold text-slate-900 mb-1">👤 본인 이름을 선택해주세요</h3>
+    <p class="text-xs text-slate-500 mb-4">이름을 누르면 가능 일정 투표 화면으로 이동합니다.</p>
+
+    <% if (meeting.status !== 'scheduling') { %>
+      <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm mb-3">⚠️ 이미 일정이 확정된 회의예요. (응답은 조율 중에만 받아요)</div>
+    <% } %>
+
+    <div class="space-y-2">
+      <% members.forEach(m => { const tk = tokenByMember[m.id]; const done = respondedSet.has(m.id); %>
+        <% if (tk) { %>
+        <a href="/avail/<%= tk %>" class="flex items-center justify-between border rounded-xl px-4 py-3 hover:bg-indigo-50 hover:border-indigo-300 transition-colors">
+          <div>
+            <span class="font-semibold text-slate-900"><%= m.name %></span>
+            <% const _aff = [m.affiliation, m.role].filter(Boolean).join(' / '); %>
+            <% if (_aff) { %><span class="text-xs text-slate-500 ml-1"><%= _aff %></span><% } %>
+          </div>
+          <% if (done) { %>
+            <span class="badge badge-green">응답완료 · 수정</span>
+          <% } else { %>
+            <span class="text-indigo-600 text-sm font-medium">투표하기 →</span>
+          <% } %>
+        </a>
+        <% } else { %>
+        <div class="flex items-center justify-between border rounded-xl px-4 py-3 bg-slate-50 text-slate-400">
+          <span class="font-medium"><%= m.name %></span>
+          <span class="text-xs">링크 준비 안 됨</span>
+        </div>
+        <% } %>
+      <% }) %>
+    </div>
+
+    <p class="text-xs text-slate-400 mt-4 text-center">본인 이름을 선택해 응답해주세요. 한 번 응답한 뒤에도 다시 들어와 수정할 수 있어요.</p>
+  </div>
+</main>
+</body></html>

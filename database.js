@@ -203,6 +203,7 @@ ensureColumn('meetings', 'uploaded_minutes_original_name', 'TEXT');
 ensureColumn('meetings', 'uploaded_minutes_uploaded_at', 'DATETIME');
 ensureColumn('meetings', 'final_pdf_path', 'TEXT');
 ensureColumn('meetings', 'final_pdf_generated_at', 'DATETIME');
+ensureColumn('meetings', 'group_token', 'TEXT'); // 공유 투표 링크용 짧은 코드
 
 function migrateMemberTypes() {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='members'").get();

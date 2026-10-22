@@ -725,6 +725,25 @@ router.post('/committees/:id/meetings', async (req, res) => {
   res.redirect(`/admin/meetings/${meetingId}`);
 });
 
+// 공유 투표 링크용 짧은 코드(헷갈리는 문자 제외). 회의마다 1개, 없으면 생성.
+function genShortCode(len = 7) {
+  const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function ensureGroupToken(meetingId) {
+  const row = db.prepare('SELECT group_token FROM meetings WHERE id = ?').get(meetingId);
+  if (row && row.group_token) return row.group_token;
+  let code;
+  for (let i = 0; i < 12; i++) {
+    code = genShortCode(7);
+    if (!db.prepare('SELECT 1 FROM meetings WHERE group_token = ?').get(code)) break;
+  }
+  db.prepare('UPDATE meetings SET group_token = ? WHERE id = ?').run(code, meetingId);
+  return code;
+}
+
 router.get('/meetings/:id', (req, res) => {
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name, c.id AS committee_id, c.quorum
@@ -732,6 +751,7 @@ router.get('/meetings/:id', (req, res) => {
     WHERE mt.id = ? AND c.operator_id = ?
   `).get(req.params.id, req.session.operatorId);
   if (!meeting) return res.status(404).send('Not found');
+  const groupToken = ensureGroupToken(meeting.id);
   if (meeting.uploaded_minutes_original_name) {
     meeting.uploaded_minutes_original_name = decodeOriginalName(meeting.uploaded_minutes_original_name);
   }
@@ -843,6 +863,7 @@ router.get('/meetings/:id', (req, res) => {
   res.render('admin/meeting_detail', {
     meeting, slots, members, responses, tokens, signatures, notifications,
     confirmedSlot, slotMatrix, baseUrl: `${req.protocol}://${req.get('host')}`,
+    groupToken,
     getTimetableImageUrl, progress,
     actionFlag: req.query.action || null,
     actionMsg: req.query.msg || '',
