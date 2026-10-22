@@ -177,7 +177,7 @@ router.post('/sign/:token', async (req, res) => {
       FROM meetings mt JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ?
     `).get(token.meeting_id);
     if (meeting) {
-      const externals = db.prepare(`SELECT * FROM members WHERE committee_id = ? AND type = 'external'`).all(meeting.committee_id);
+      const externals = db.prepare(`SELECT * FROM members WHERE committee_id = ? AND type IN ('external', 'student')`).all(meeting.committee_id);
       const signatures = db.prepare('SELECT * FROM signatures WHERE meeting_id = ?').all(meeting.id);
       const signedIds = new Set(signatures.map(s => s.member_id));
       allExternalsSigned = externals.length > 0 && externals.every(e => signedIds.has(e.id));

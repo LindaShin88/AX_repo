@@ -56,7 +56,7 @@ function generateMinutesPDF({ meeting, committee, slot, members, signatures, out
     } else {
       attendees.forEach((m, i) => {
         const aff = [m.affiliation, m.role].filter(Boolean).join(' / ');
-        doc.text(`  ${i + 1}. ${m.name}${aff ? '  (' + aff + ')' : ''}${m.type === 'external' ? '  [외부위원]' : ''}`);
+        doc.text(`  ${i + 1}. ${m.name}${aff ? '  (' + aff + ')' : ''}${m.type === 'external' ? '  [외부위원]' : m.type === 'student' ? '  [학생]' : ''}`);
       });
     }
     doc.moveDown(0.8);
@@ -86,7 +86,7 @@ function generateMinutesPDF({ meeting, committee, slot, members, signatures, out
         y = 50;
         col = 0;
       }
-      doc.fontSize(10).text(`${member.name}${member.type === 'external' ? ' [외부위원]' : ''}`, x, y);
+      doc.fontSize(10).text(`${member.name}${member.type === 'external' ? ' [외부위원]' : member.type === 'student' ? ' [학생]' : ''}`, x, y);
       try {
         const base64 = sig.signature_data.replace(/^data:image\/\w+;base64,/, '');
         const imgBuf = Buffer.from(base64, 'base64');

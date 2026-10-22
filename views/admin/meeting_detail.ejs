@@ -522,7 +522,7 @@
 
   <% if (meeting.status === 'confirmed' || meeting.status === 'completed') { %>
   <section class="bg-white border rounded-xl p-5 mb-6">
-    <h2 class="font-bold text-slate-900 mb-3">📝 회의록 및 외부위원 서명</h2>
+    <h2 class="font-bold text-slate-900 mb-3">📝 회의록 및 서명 (외부위원·학생)</h2>
 
     <% if (locals.actionFlag === 'minutes-uploaded') { %>
       <div class="mb-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-2 text-sm">✅ 회의록 파일이 업로드되었습니다.</div>
@@ -531,13 +531,13 @@
     <% } else if (locals.actionFlag === 'minutes-upload-err') { %>
       <div class="mb-3 bg-rose-50 border border-rose-300 text-rose-900 rounded-lg px-3 py-2 text-sm">⚠️ 업로드 실패: <%= locals.actionMsg || '알 수 없는 오류' %></div>
     <% } else if (locals.actionFlag === 'external-signatures-sent') { %>
-      <div class="mb-3 bg-violet-50 border border-violet-300 text-violet-900 rounded-lg px-3 py-2 text-sm">📨 외부위원 <%= locals.actionCount || 0 %>명에게 서명 요청을 발송했습니다.</div>
+      <div class="mb-3 bg-violet-50 border border-violet-300 text-violet-900 rounded-lg px-3 py-2 text-sm">📨 외부위원·학생 <%= locals.actionCount || 0 %>명에게 서명 요청을 발송했습니다.</div>
     <% } else if (locals.actionFlag === 'external-reminded') { %>
-      <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⏰ 미서명 외부위원 <%= locals.actionCount || 0 %>명에게 리마인드를 보냈습니다.</div>
+      <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⏰ 미서명 외부위원·학생 <%= locals.actionCount || 0 %>명에게 리마인드를 보냈습니다.</div>
     <% } else if (locals.actionFlag === 'no-pending-external') { %>
-      <div class="mb-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-2 text-sm">✅ 모든 외부위원이 이미 서명을 완료했어요!</div>
+      <div class="mb-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-2 text-sm">✅ 모든 서명 대상(외부위원·학생)이 이미 서명을 완료했어요!</div>
     <% } else if (locals.actionFlag === 'no-external') { %>
-      <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⚠️ 이 위원회에 외부위원이 없습니다.</div>
+      <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⚠️ 이 위원회에 서명 대상(외부위원·학생)이 없습니다.</div>
     <% } %>
 
     <div class="mb-5 border border-slate-200 rounded-xl p-4 bg-slate-50">
@@ -570,7 +570,7 @@
       <p class="text-xs text-slate-500 mt-2">※ PDF로 올리시는 것을 권장합니다. 한글(.hwp/.hwpx)도 업로드/다운로드 가능합니다.</p>
     </div>
 
-    <% const externals = members.filter(m => m.type === 'external'); %>
+    <% const externals = members.filter(m => m.type === 'external' || m.type === 'student'); %>
     <% const externalSigned = externals.filter(m => signatures.find(s => s.member_id === m.id)).length; %>
     <% const externalPct = externals.length > 0 ? Math.round(externalSigned * 100 / externals.length) : 0; %>
     <% const allExternalsSigned = externals.length > 0 && externalSigned === externals.length; %>
@@ -603,16 +603,16 @@
       <% } %>
 
       <% if (externals.length === 0) { %>
-        <p class="text-sm text-slate-500 py-2">이 위원회에 외부위원이 없습니다.</p>
+        <p class="text-sm text-slate-500 py-2">이 위원회에 서명 대상(외부위원·학생)이 없습니다.</p>
       <% } else { %>
         <% const pendingExternals = externals.filter(m => !signatures.find(s => s.member_id === m.id)); %>
         <div class="flex gap-2 mb-3 items-center flex-wrap">
           <form method="POST" action="/admin/meetings/<%= meeting.id %>/request-external-signatures">
-            <button class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">📨 외부위원 전체에게 서명 요청 메일 발송</button>
+            <button class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">📨 외부위원·학생 전체에게 서명 요청 메일 발송</button>
           </form>
           <% if (pendingExternals.length > 0) { %>
             <form method="POST" action="/admin/meetings/<%= meeting.id %>/remind-external-signatures"
-                  onsubmit="return confirm('아직 서명하지 않은 외부위원 <%= pendingExternals.length %>명에게 리마인드 메일을 보냅니다. 진행할까요?')">
+                  onsubmit="return confirm('아직 서명하지 않은 <%= pendingExternals.length %>명(외부위원·학생)에게 리마인드 메일을 보냅니다. 진행할까요?')">
               <button class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
                 ⏰ 미서명자 <%= pendingExternals.length %>명에게 리마인드
               </button>
@@ -629,7 +629,7 @@
         <table class="w-full text-sm">
           <thead class="text-xs text-slate-500 border-b">
             <tr>
-              <th class="py-2 text-left">외부위원</th>
+              <th class="py-2 text-left">서명 대상</th>
               <th class="text-left">상태</th>
               <th class="text-left">서명 시각</th>
               <th class="text-left">서명 링크</th>

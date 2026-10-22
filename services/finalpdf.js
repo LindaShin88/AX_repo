@@ -30,7 +30,7 @@ function generateSignaturePagePDF({ meeting, committee, externals, signatures, o
 
     doc.fontSize(18).text(`${committee.name}`, { align: 'center' });
     doc.moveDown(0.2);
-    doc.fontSize(14).text(`「${meeting.title}」 외부위원 전자서명`, { align: 'center' });
+    doc.fontSize(14).text(`「${meeting.title}」 외부위원·학생 전자서명`, { align: 'center' });
     doc.moveDown(1);
 
     const signedExternals = externals.map(ext => ({
@@ -63,7 +63,7 @@ function generateSignaturePagePDF({ meeting, committee, externals, signatures, o
       const aff = [member.affiliation, member.role].filter(Boolean).join(' / ');
       doc.fontSize(11).fillColor('black').text(`${member.name}`, x + 10, y + 10, { width: sigBoxW - 20 });
       if (aff) doc.fontSize(8).fillColor('#666').text(aff, x + 10, y + 26, { width: sigBoxW - 20 });
-      doc.fontSize(8).fillColor('#7c3aed').text('[외부위원]', x + 10, y + 38);
+      doc.fontSize(8).fillColor('#7c3aed').text(member.type === 'student' ? '[학생]' : '[외부위원]', x + 10, y + 38);
 
       try {
         const base64 = String(sig.signature_data || '').replace(/^data:image\/\w+;base64,/, '');

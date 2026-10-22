@@ -1048,7 +1048,7 @@ router.post('/meetings/:id/request-external-signatures', async (req, res) => {
   if (!meeting) return res.status(404).send('Not found');
 
   const externals = db.prepare(`
-    SELECT * FROM members WHERE committee_id = ? AND type = 'external'
+    SELECT * FROM members WHERE committee_id = ? AND type IN ('external', 'student')
   `).all(meeting.committee_id);
 
   if (externals.length === 0) {
@@ -1088,7 +1088,7 @@ router.post('/meetings/:id/remind-external-signatures', async (req, res) => {
     SELECT m.*, t.token
       FROM members m
       JOIN member_tokens t ON t.member_id = m.id AND t.meeting_id = ? AND t.purpose = 'signature'
-     WHERE m.committee_id = ? AND m.type = 'external'
+     WHERE m.committee_id = ? AND m.type IN ('external', 'student')
        AND NOT EXISTS (SELECT 1 FROM signatures s WHERE s.meeting_id = ? AND s.member_id = m.id)
   `).all(meeting.id, meeting.committee_id, meeting.id);
 
@@ -1139,7 +1139,7 @@ router.post('/meetings/:id/generate-final-pdf', async (req, res) => {
   `).get(req.params.id, req.session.operatorId);
   if (!meeting) return res.status(404).send('Not found');
   const committee = db.prepare('SELECT * FROM committees WHERE id = ?').get(meeting.committee_id);
-  const externals = db.prepare(`SELECT * FROM members WHERE committee_id = ? AND type = 'external'`).all(meeting.committee_id);
+  const externals = db.prepare(`SELECT * FROM members WHERE committee_id = ? AND type IN ('external', 'student')`).all(meeting.committee_id);
   const signatures = db.prepare('SELECT * FROM signatures WHERE meeting_id = ?').all(meeting.id);
   const uploadedAbs = meeting.uploaded_minutes_path ? path.join(__dirname, '..', meeting.uploaded_minutes_path) : null;
 
