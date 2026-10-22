@@ -280,6 +280,7 @@
     </div>
   </section>
   <% } %>
+  <% } %><%# ↑ 여기까지가 "조율중"에만 보이는 영역(정족수/강제확정/알림배너). 아래 응답 현황 표는 확정 후에도 계속 보임 %>
 
   <section class="bg-white border rounded-xl p-5 mb-6">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -293,6 +294,10 @@
       </div>
     </div>
 
+    <% if (meeting.status !== 'scheduling' && meeting.confirmed_slot_id) { %>
+    <div class="mb-3 bg-blue-50 border border-blue-200 text-blue-800 text-sm rounded-lg px-3 py-2">✅ 회의가 확정되었습니다. 아래는 위원들의 최종 응답 현황이에요.</div>
+    <% } %>
+
     <div id="matrix-slot" class="overflow-x-auto">
       <table class="w-full text-sm border-collapse">
         <thead>
@@ -305,15 +310,19 @@
               </th>
             <% }) %>
             <th class="border-b border-slate-200 px-3 py-2 text-xs text-center">집계</th>
+            <% if (meeting.status === 'scheduling') { %>
             <th class="border-b border-slate-200 px-2 py-2 text-xs text-center">확정</th>
+            <% } %>
           </tr>
         </thead>
         <tbody>
           <% slotMatrix.forEach(({ slot, cells, availableCount, unavailableCount, noResp }) => { %>
-            <tr class="hover:bg-slate-50">
-              <td class="border-b border-slate-100 px-3 py-2 font-medium text-sm sticky left-0 bg-white">
+            <% const isConfirmedSlot = meeting.confirmed_slot_id === slot.id; %>
+            <tr class="hover:bg-slate-50 <%= isConfirmedSlot ? 'bg-blue-50' : '' %>">
+              <td class="border-b border-slate-100 px-3 py-2 font-medium text-sm sticky left-0 <%= isConfirmedSlot ? 'bg-blue-50' : 'bg-white' %>">
                 <%= fmtKor(slot.start_time) %>
                 <span class="text-slate-400 text-xs">~ <%= fmtKor(slot.end_time).split(' ')[1] %></span>
+                <% if (isConfirmedSlot) { %><span class="badge badge-blue ml-1">✅ 확정됨</span><% } %>
               </td>
               <% cells.forEach(({ member, response }) => { %>
                 <td class="border-b border-slate-100 px-1 py-2 text-center text-xs">
@@ -333,12 +342,14 @@
                 <span class="text-slate-300 mx-1">|</span>
                 <span class="text-slate-400"><%= noResp %></span>
               </td>
+              <% if (meeting.status === 'scheduling') { %>
               <td class="border-b border-slate-100 px-2 py-2 text-center">
                 <form method="POST" action="/admin/meetings/<%= meeting.id %>/confirm" onsubmit="return confirm('이 시간으로 회의를 확정하시겠습니까? 모든 위원에게 안내 메일이 발송됩니다.')">
                   <input type="hidden" name="slot_id" value="<%= slot.id %>">
                   <button class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">확정</button>
                 </form>
               </td>
+              <% } %>
             </tr>
           <% }) %>
         </tbody>
@@ -351,8 +362,9 @@
           <tr class="bg-slate-50">
             <th class="border-b border-slate-200 px-3 py-2 text-left text-xs sticky left-0 bg-slate-50">위원</th>
             <% slotMatrix.forEach(({ slot }) => { %>
-              <th class="border-b border-slate-200 px-2 py-2 text-xs text-center" style="min-width:90px;">
+              <th class="border-b border-slate-200 px-2 py-2 text-xs text-center <%= meeting.confirmed_slot_id === slot.id ? 'bg-blue-50' : '' %>" style="min-width:90px;">
                 <%= fmtKor(slot.start_time) %>
+                <% if (meeting.confirmed_slot_id === slot.id) { %><div class="text-[10px] text-blue-700 font-semibold">✅ 확정</div><% } %>
               </th>
             <% }) %>
           </tr>
@@ -386,6 +398,7 @@
               <td class="border-b border-slate-200 px-2 py-2 text-center text-xs text-emerald-700 font-bold"><%= availableCount %></td>
             <% }) %>
           </tr>
+          <% if (meeting.status === 'scheduling') { %>
           <tr class="bg-slate-50">
             <td class="px-3 py-2 text-xs text-slate-700 font-semibold sticky left-0 bg-slate-50">확정</td>
             <% slotMatrix.forEach(({ slot }) => { %>
@@ -397,6 +410,7 @@
               </td>
             <% }) %>
           </tr>
+          <% } %>
         </tfoot>
       </table>
     </div>
@@ -421,7 +435,6 @@
       try { const saved = localStorage.getItem('matrixMode'); if (saved === 'member') setMatrixMode('member'); } catch (e) {}
     </script>
   </section>
-  <% } %>
 
   <% if (locals.timetableMatrix && timetableMatrix.dates.length > 0 && timetableMatrix.facultyCount > 0) { %>
   <section class="bg-white border rounded-xl p-5 mb-6">
