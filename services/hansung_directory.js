@@ -94,25 +94,28 @@ async function lookupProfessor(name) {
     return String(s).split(/\s*,\s*/).map(cleanField).filter(Boolean);
   }
 
-  const byPhone = new Map();
+  // 사번은 사람마다 유일하므로 사번으로 묶는다.
+  // → 같은 사람이 여러 학과에 걸쳐 검색돼도 하나로 합쳐지고(학과는 소속에 누적),
+  //   사번이 다른 "진짜 동명이인"만 별도 후보로 남아 위원 추가 시 선택할 수 있다.
+  const bySabun = new Map();
   for (const h of hits) {
-    const key = h.phone ? `phone:${h.phone}` : `email:${h.email || h.sabun}`;
-    if (!byPhone.has(key)) byPhone.set(key, []);
-    byPhone.get(key).push(h);
+    const key = `sabun:${h.sabun}`;
+    if (!bySabun.has(key)) bySabun.set(key, []);
+    bySabun.get(key).push(h);
   }
 
   const merged = [];
-  for (const [, group] of byPhone) {
+  for (const [, group] of bySabun) {
     const first = group[0];
     merged.push({
       sabun: first.sabun,
       name: first.name,
-      email: first.email,
-      phone: first.phone,
+      email: group.map(g => g.email).find(Boolean) || first.email,
+      phone: group.map(g => g.phone).find(Boolean) || first.phone,
       position: first.position,
-      major: first.major,
+      major: group.map(g => g.major).find(Boolean) || first.major,
       affiliations: [...new Set(group.flatMap(g => splitAffiliation(g.affiliation)))],
-      sabuns: group.map(g => g.sabun),
+      sabuns: [first.sabun],
     });
   }
   return { matches: merged };

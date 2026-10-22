@@ -315,7 +315,7 @@
               return;
             } else {
               title.innerText = `🔀 동명이인 ${data.matches.length}명 발견`;
-              body.innerHTML = `<p class="text-xs text-slate-500 mb-3">전화번호가 다르므로 다른 사람으로 인식됨. 추가할 위원을 선택하세요.</p>` +
+              body.innerHTML = `<p class="text-xs text-slate-500 mb-3">사번이 다른 동명이인이에요. 추가할 위원을 선택하세요.</p>` +
                 data.matches.map((m, i) => `
                   <div class="border rounded-lg p-3 mb-2 hover:bg-slate-50">
                     <div class="font-semibold text-sm">${m.name} <span class="text-xs text-slate-500">#${m.sabun}</span></div>
