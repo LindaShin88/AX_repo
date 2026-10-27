@@ -144,6 +144,8 @@
             el.textContent = checked.join(' · ');
             el.classList.remove('text-slate-400');
           }
+          // 빠른 설정 버튼 등 코드로 체크하면 change 이벤트가 안 떠서, 미리보기도 직접 갱신
+          if (typeof buildPreview === 'function') buildPreview();
         }
         document.addEventListener('DOMContentLoaded', updateTimeSummary);
       </script>
@@ -258,9 +260,10 @@
           if ([...container.querySelectorAll('input')].some(i => i.value === time)) { alert('이미 추가된 시간입니다.'); inp.value=''; return; }
           const label = document.createElement('label');
           label.className = 'flex items-center gap-1.5 border border-amber-400 bg-amber-50 rounded-lg px-3 py-1.5 cursor-pointer';
-          label.innerHTML = `<input type="checkbox" name="${grp}_hours" value="${time}" checked><span>${time}</span><button type="button" class="text-rose-500 ml-1" onclick="this.parentElement.remove()">×</button>`;
+          label.innerHTML = `<input type="checkbox" name="${grp}_hours" value="${time}" checked><span>${time}</span><button type="button" class="text-rose-500 ml-1" onclick="this.parentElement.remove(); updateTimeSummary();">×</button>`;
           container.appendChild(label);
           inp.value = '';
+          updateTimeSummary();
         }
       </script>
     </section>
