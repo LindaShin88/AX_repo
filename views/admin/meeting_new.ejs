@@ -330,6 +330,21 @@
         <pre id="prev-sms-body" class="bg-slate-50 border rounded-lg p-3 text-sm whitespace-pre-wrap font-sans text-slate-800 m-0"></pre>
         <div class="text-[11px] text-slate-400 mt-1">글자수: <strong><span id="prev-sms-count"></span></strong> · 복사해서 문자 발송 시스템에 붙여넣으세요. (회의 생성 후 [SMS 수동 발송] 화면에서 위원별 개별 링크가 들어간 버전도 받을 수 있어요)</div>
       </div>
+
+      <div id="preview-vote-wrap" class="pt-3 border-t">
+        <div class="text-sm font-semibold text-slate-700 mb-1">🗳️ 위원이 보는 투표 화면 (미리보기)</div>
+        <p class="text-[11px] text-slate-400 mb-2">위원이 링크를 열면 아래처럼 보여요. 각 일정에 <strong>가능/불가능</strong>을 선택해 제출합니다. (실제 발송 시 위원 수업과 겹치는 시간은 자동 제외될 수 있어요.)</p>
+        <div class="mx-auto max-w-sm border rounded-2xl bg-slate-100 p-3">
+          <div class="bg-white rounded-xl border p-3 mb-2">
+            <div class="text-[11px] text-slate-400">가능 일정 회신</div>
+            <div id="prev-vote-title" class="font-bold text-slate-900 text-sm"></div>
+          </div>
+          <div class="bg-white rounded-xl border p-3">
+            <div class="text-[11px] text-slate-500 mb-2">아래 후보 일정 중 가능 여부를 표시해주세요</div>
+            <div id="prev-vote-slots"></div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <div class="flex gap-2">
@@ -426,6 +441,67 @@ function buildPreview() {
     document.getElementById('prev-sms-body').textContent = sms;
     document.getElementById('prev-sms-count').textContent = sms.length + '자';
   } else { smsWrap.style.display = 'none'; }
+
+  buildVotePreview();
+}
+
+// ── 투표 화면 미리보기 ──────────────────────────────────────────────
+function _pad(n){ return String(n).padStart(2, '0'); }
+function _normDate(s){
+  s = (s || '').trim(); if (!s) return null;
+  const m = s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+  return m ? (m[1] + '-' + _pad(+m[2]) + '-' + _pad(+m[3])) : null;
+}
+function buildVotePreview(){
+  const KO = ['일','월','화','수','목','금','토'];
+  const wsEl = document.querySelector('input[name="window_start"]');
+  const weEl = document.querySelector('input[name="window_end"]');
+  const durEl = document.querySelector('[name="duration_minutes"]');
+  const exEl = document.querySelector('input[name="excluded_dates"]');
+  const titleEl = document.querySelector('input[name="title"]');
+  const slotsBox = document.getElementById('prev-vote-slots');
+  const titleBox = document.getElementById('prev-vote-title');
+  if (!slotsBox) return;
+  titleBox.textContent = (titleEl && titleEl.value.trim()) || '(회의명 미입력)';
+
+  const ws = wsEl && wsEl.value, we = weEl && weEl.value;
+  const dur = parseInt(durEl && durEl.value) || 60;
+  const excluded = new Set(((exEl && exEl.value) || '').split(/[\s,]+/).map(_normDate).filter(Boolean));
+  const times = [...document.querySelectorAll('input[name="morning_hours"]:checked, input[name="afternoon_hours"]:checked')].map(c => c.value);
+
+  if (!ws || !we || times.length === 0){
+    slotsBox.innerHTML = '<div class="text-xs text-slate-400 py-3 text-center">날짜 범위와 시간을 선택하면 여기에 투표 화면이 보여요.</div>';
+    return;
+  }
+  const start = new Date(ws + 'T00:00:00'), end = new Date(we + 'T00:00:00');
+  const slots = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue;
+    const ds = d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate());
+    if (excluded.has(ds)) continue;
+    for (const t of times){
+      const [h, m] = t.split(':').map(Number);
+      const em = h * 60 + m + dur;
+      slots.push({ ds, dow, h, m, eh: Math.floor(em / 60), em2: em % 60 });
+    }
+  }
+  slots.sort((a, b) => a.ds.localeCompare(b.ds) || (a.h * 60 + a.m) - (b.h * 60 + b.m));
+  if (slots.length === 0){
+    slotsBox.innerHTML = '<div class="text-xs text-rose-500 py-3 text-center">조건에 맞는 후보 일정이 없어요. (주말/제외일만 선택됐는지 확인)</div>';
+    return;
+  }
+  const MAX = 12;
+  let html = '';
+  slots.slice(0, MAX).forEach(sl => {
+    const d = new Date(sl.ds + 'T00:00:00');
+    const label = `${d.getMonth() + 1}월 ${d.getDate()}일 (${KO[sl.dow]}) ${_pad(sl.h)}:${_pad(sl.m)} ~ ${_pad(sl.eh)}:${_pad(sl.em2)}`;
+    html += `<div class="border rounded-lg p-2 mb-1.5"><div class="font-medium text-slate-800 text-xs mb-1">${label}</div><div class="grid grid-cols-2 gap-1"><div class="border rounded px-2 py-1 text-center text-[11px] text-emerald-700 bg-emerald-50">가능 ✓</div><div class="border rounded px-2 py-1 text-center text-[11px] text-rose-600 bg-rose-50">불가능 ✗</div></div></div>`;
+  });
+  html += (slots.length > MAX)
+    ? `<div class="text-[11px] text-slate-400 text-center pt-1">… 외 ${slots.length - MAX}개 (총 ${slots.length}개 일정)</div>`
+    : `<div class="text-[11px] text-slate-400 text-center pt-1">총 ${slots.length}개 일정</div>`;
+  slotsBox.innerHTML = html;
 }
 
 function copySmsPreview(btn) {
