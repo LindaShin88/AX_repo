@@ -15,6 +15,18 @@
     하단의 <strong>"전체 일괄 복사 (CSV)"</strong> 로 다운로드해서 SMS 사이트에 일괄 업로드하세요.
   </div>
 
+  <% if (locals.groupSms) { %>
+  <div class="bg-indigo-50 border-2 border-indigo-300 rounded-xl p-4 mb-5">
+    <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+      <div class="font-bold text-indigo-900">📢 전체 공통 문자 (한 번에 단체 발송용)</div>
+      <button onclick="copyText(this, document.getElementById('group-sms').textContent)" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded px-3 py-1.5 whitespace-nowrap">📋 전체 문자 복사</button>
+    </div>
+    <p class="text-xs text-indigo-800 mb-2"><strong>이 한 통</strong>을 위원 전체에게 단체문자로 보내세요. 각자 들어가 <strong>본인 이름을 선택</strong>해 응답합니다. (개인별 아래 메시지는 고유 링크라, 한 명씩 보낼 때만 쓰세요.)</p>
+    <pre id="group-sms" class="bg-white border border-indigo-200 rounded-lg p-3 text-sm whitespace-pre-wrap font-sans"><%= groupSms %></pre>
+    <div class="text-[11px] text-indigo-400 mt-1">글자수: <strong><%= groupSms.length %>자</strong></div>
+  </div>
+  <% } %>
+
   <div class="flex gap-2 mb-6">
     <button onclick="copyAllCsv()" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-semibold">📋 전체 일괄 복사 (CSV)</button>
     <button onclick="downloadCsv()" class="border bg-white hover:bg-slate-50 px-4 py-2 rounded-lg text-sm">💾 CSV 다운로드</button>

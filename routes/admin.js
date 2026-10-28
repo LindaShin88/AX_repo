@@ -1261,7 +1261,18 @@ router.get('/meetings/:id/sms-send', (req, res) => {
     if (!seen.has(r.member_id)) seen.set(r.member_id, r);
   }
   const messages = [...seen.values()];
-  res.render('admin/sms_send', { meeting, messages, purpose });
+
+  // 전체 공통 문자(공유 투표 링크) — 가능일정/리마인드 유형일 때만 (이름 선택 후 투표)
+  let groupSms = null;
+  if (purpose === 'availability' || purpose === 'reminder') {
+    const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+    const groupLink = `${baseUrl}/g/${ensureGroupToken(meeting.id)}`;
+    groupSms = purpose === 'reminder'
+      ? `[리마인드] 위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n본인 이름 선택 후 응답: ${groupLink}`
+      : `[${meeting.committee_name}]\n위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n본인 이름 선택 후 응답: ${groupLink}`;
+  }
+
+  res.render('admin/sms_send', { meeting, messages, purpose, groupSms });
 });
 
 router.get('/notifications', (req, res) => {
