@@ -528,7 +528,7 @@
               <% if (responded) { %><span class="badge badge-green">응답완료</span>
               <% } else { %><span class="badge badge-gray">대기중</span><% } %>
               <% if (t) { %>
-              <button onclick="navigator.clipboard.writeText('<%= baseUrl %>/avail/<%= t.token %>'); this.textContent='✓ 복사됨'" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">링크 복사</button>
+              <button onclick="navigator.clipboard.writeText('<%= baseUrl %>/avail/<%= t.token %>'); this.textContent='✓ 복사됨'" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">개인 고유 링크 복사</button>
               <a href="/avail/<%= t.token %>" target="_blank" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">↗ 열기</a>
               <% } %>
             </div>

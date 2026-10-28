@@ -928,19 +928,22 @@ router.post('/meetings/:id/remind', async (req, res) => {
     `).get(meeting.id, m.id);
     if (!token) continue;
     if (customContent) {
-      const link = `${baseUrl}/avail/${token.token}`;
+      const link = `${baseUrl}/avail/${token.token}`; // 이메일: 위원별 고유 링크
+      meeting.group_token = meeting.group_token || ensureGroupToken(meeting.id);
+      const groupLink = `${baseUrl}/g/${meeting.group_token}`; // SMS: 공유 투표 링크
       const subject = customSubject || `[리마인드] ${meeting.title}`;
-      const body = customContent.replace(/\{이름\}/g, m.name).replace(/\{링크\}/g, link);
+      const emailBody = customContent.replace(/\{이름\}/g, m.name).replace(/\{링크\}/g, link);
+      const smsBody = customContent.replace(/\{이름\}/g, m.name).replace(/\{링크\}/g, groupLink);
       const channels = notify.pickChannels(meeting, m);
       for (const ch of channels) {
         if (ch.channel === 'sms') {
-          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'sms', subject, content: body, status: 'SMS는 운영자가 직접 발송' });
+          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'sms', subject, content: smsBody, status: 'SMS는 운영자가 직접 발송' });
         } else if (m.email && mailer.isSmtpConfigured()) {
-          const r = await mailer.sendMail({ to: m.email, subject, text: body });
+          const r = await mailer.sendMail({ to: m.email, subject, text: emailBody });
           const status = r.ok ? `발송 OK (${r.messageId || ''})` : `실패: ${r.reason}`;
-          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'email', subject, content: body, status });
+          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'email', subject, content: emailBody, status });
         } else {
-          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'email', subject, content: body, status: m.email ? 'SMTP 미설정' : 'no-email' });
+          notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'email', subject, content: emailBody, status: m.email ? 'SMTP 미설정' : 'no-email' });
         }
       }
     } else {
