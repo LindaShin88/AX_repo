@@ -40,26 +40,39 @@ function normalizeTimeEntry(x) {
 
 function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
   const c = { ...defaultConstraints(), ...parseConstraints(constraintsRaw) };
-  const start = new Date(c.window.start + 'T00:00:00');
-  const end = new Date(c.window.end + 'T00:00:00');
   const excluded = new Set(c.excludedDates || []);
   const candidates = [];
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    if (excluded.has(dateStr)) continue;
-    const hasOverride = c.dateOverrides && c.dateOverrides[dateStr];
-    const dow = d.getDay();
-    if (!hasOverride && (dow === 0 || dow === 6)) continue;
-    const rawHours = hasOverride
-      ? c.dateOverrides[dateStr]
-      : [...(c.morningHours || []), ...(c.afternoonHours || [])];
-    const allowedTimes = rawHours.map(normalizeTimeEntry).filter(Boolean);
+  const overrides = c.dateOverrides || {};
+  const overrideDates = Object.keys(overrides).sort();
+
+  const pushDay = (dateStr, rawHours) => {
+    const [Y, M, D] = dateStr.split('-').map(Number);
+    const allowedTimes = (rawHours || []).map(normalizeTimeEntry).filter(Boolean);
     for (const t of allowedTimes) {
-      const slotStart = new Date(d);
-      slotStart.setHours(t.h, t.m, 0, 0);
+      const slotStart = new Date(Y, M - 1, D, t.h, t.m, 0, 0);
       const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
       candidates.push({ start: fmtLocal(slotStart), end: fmtLocal(slotEnd) });
     }
+  };
+
+  // 직접 입력(날짜별 지정)이 있으면 → 날짜 범위는 무시하고 "입력한 날짜만" 후보로 사용
+  if (overrideDates.length > 0) {
+    for (const dateStr of overrideDates) {
+      if (excluded.has(dateStr)) continue;
+      pushDay(dateStr, overrides[dateStr]);
+    }
+    return candidates;
+  }
+
+  // 직접 입력이 없으면 → 날짜 범위 + 오전/오후 시간 (주말 제외)
+  const start = new Date(c.window.start + 'T00:00:00');
+  const end = new Date(c.window.end + 'T00:00:00');
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (excluded.has(dateStr)) continue;
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue;
+    pushDay(dateStr, [...(c.morningHours || []), ...(c.afternoonHours || [])]);
   }
   return candidates;
 }

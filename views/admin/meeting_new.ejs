@@ -211,6 +211,7 @@
             container.appendChild(chip);
           }
           document.getElementById('override-count').textContent = lines.length;
+          if (typeof buildPreview === 'function') buildPreview();
         }
         function removeOverrideChip(date) {
           const ta = document.querySelector('textarea[name="date_overrides"]');
@@ -341,6 +342,7 @@
           <div class="bg-white rounded-xl border p-3 mb-2">
             <div class="text-[11px] text-slate-400">가능 일정 회신</div>
             <div id="prev-vote-title" class="font-bold text-slate-900 text-sm"></div>
+            <div id="prev-vote-note" class="text-[11px] text-indigo-600 mt-1"></div>
           </div>
           <div class="bg-white rounded-xl border p-3">
             <div class="text-[11px] text-slate-500 mb-2">아래 후보 일정 중 가능 여부를 표시해주세요</div>
@@ -455,43 +457,87 @@ function _normDate(s){
   const m = s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
   return m ? (m[1] + '-' + _pad(+m[2]) + '-' + _pad(+m[3])) : null;
 }
+function _mkSlot(ds, h, m, dur){
+  const d = new Date(ds + 'T00:00:00');
+  const em = h * 60 + m + dur;
+  return { ds, dow: d.getDay(), h, m, eh: Math.floor(em / 60), em2: em % 60 };
+}
+// 직접 입력(날짜별 지정) textarea 파싱 → 입력이 있으면 "그 날짜만" 후보로 (날짜 범위 무시)
+function _overrideSlotsForPreview(dur){
+  const ta = document.querySelector('textarea[name="date_overrides"]');
+  if (!ta || !ta.value.trim()) return null;
+  const morning = [...document.querySelectorAll('input[name="morning_hours"]:checked')].map(c => c.value);
+  const afternoon = [...document.querySelectorAll('input[name="afternoon_hours"]:checked')].map(c => c.value);
+  const defM = morning.length ? morning : ['9:00','10:00','11:00'];
+  const defA = afternoon.length ? afternoon : ['13:00','14:00','15:00','16:00'];
+  const toHM = x => { const mm = x.match(/^(\d{1,2})(?::(\d{2}))?$/); return mm ? [parseInt(mm[1]), mm[2] ? parseInt(mm[2]) : 0] : null; };
+  const slots = [];
+  let anyValid = false;
+  for (const line of ta.value.split(/\r?\n/)){
+    const t = line.trim(); if (!t) continue;
+    const m = t.match(/^(\d{4}[-.\/]\d{1,2}[-.\/]\d{1,2}\.?)\s*[:\s]\s*(.+)$/);
+    if (!m) continue;
+    const date = _normDate(m[1].replace(/\.$/, ''));
+    if (!date) continue;
+    anyValid = true;
+    const raw = m[2].trim();
+    let times;
+    if (/^(오전|am|morning)$/i.test(raw)) times = defM;
+    else if (/^(오후|pm|afternoon)$/i.test(raw)) times = defA;
+    else if (/^(종일|all|allday|all-day|전체)$/i.test(raw)) times = [...defM, ...defA];
+    else times = raw.split(/[\s,]+/).filter(Boolean);
+    for (const tt of times){
+      const hm = toHM(tt); if (!hm) continue;
+      slots.push(_mkSlot(date, hm[0], hm[1], dur));
+    }
+  }
+  return anyValid ? slots : null;
+}
 function buildVotePreview(){
   const KO = ['일','월','화','수','목','금','토'];
-  const wsEl = document.querySelector('input[name="window_start"]');
-  const weEl = document.querySelector('input[name="window_end"]');
   const durEl = document.querySelector('[name="duration_minutes"]');
-  const exEl = document.querySelector('input[name="excluded_dates"]');
   const titleEl = document.querySelector('input[name="title"]');
   const slotsBox = document.getElementById('prev-vote-slots');
   const titleBox = document.getElementById('prev-vote-title');
+  const noteBox = document.getElementById('prev-vote-note');
   if (!slotsBox) return;
   titleBox.textContent = (titleEl && titleEl.value.trim()) || '(회의명 미입력)';
-
-  const ws = wsEl && wsEl.value, we = weEl && weEl.value;
   const dur = parseInt(durEl && durEl.value) || 60;
-  const excluded = new Set(((exEl && exEl.value) || '').split(/[\s,]+/).map(_normDate).filter(Boolean));
-  const times = [...document.querySelectorAll('input[name="morning_hours"]:checked, input[name="afternoon_hours"]:checked')].map(c => c.value);
 
-  if (!ws || !we || times.length === 0){
-    slotsBox.innerHTML = '<div class="text-xs text-slate-400 py-3 text-center">날짜 범위와 시간을 선택하면 여기에 투표 화면이 보여요.</div>';
-    return;
-  }
-  const start = new Date(ws + 'T00:00:00'), end = new Date(we + 'T00:00:00');
-  const slots = [];
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
-    const dow = d.getDay();
-    if (dow === 0 || dow === 6) continue;
-    const ds = d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate());
-    if (excluded.has(ds)) continue;
-    for (const t of times){
-      const [h, m] = t.split(':').map(Number);
-      const em = h * 60 + m + dur;
-      slots.push({ ds, dow, h, m, eh: Math.floor(em / 60), em2: em % 60 });
+  let slots = _overrideSlotsForPreview(dur);
+  const overrideMode = slots !== null;
+
+  if (overrideMode){
+    if (noteBox) noteBox.textContent = '※ 직접 입력한 날짜만 사용 중 — 위 날짜 범위는 무시됩니다.';
+  } else {
+    if (noteBox) noteBox.textContent = '';
+    const wsEl = document.querySelector('input[name="window_start"]');
+    const weEl = document.querySelector('input[name="window_end"]');
+    const exEl = document.querySelector('input[name="excluded_dates"]');
+    const ws = wsEl && wsEl.value, we = weEl && weEl.value;
+    const excluded = new Set(((exEl && exEl.value) || '').split(/[\s,]+/).map(_normDate).filter(Boolean));
+    const times = [...document.querySelectorAll('input[name="morning_hours"]:checked, input[name="afternoon_hours"]:checked')].map(c => c.value);
+    if (!ws || !we || times.length === 0){
+      slotsBox.innerHTML = '<div class="text-xs text-slate-400 py-3 text-center">날짜 범위와 시간을 선택하거나, 아래 "직접 입력"에 날짜를 적으면 투표 화면이 보여요.</div>';
+      return;
+    }
+    slots = [];
+    const start = new Date(ws + 'T00:00:00'), end = new Date(we + 'T00:00:00');
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
+      const dow = d.getDay();
+      if (dow === 0 || dow === 6) continue;
+      const ds = d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate());
+      if (excluded.has(ds)) continue;
+      for (const t of times){
+        const [h, m] = t.split(':').map(Number);
+        slots.push(_mkSlot(ds, h, m, dur));
+      }
     }
   }
+
   slots.sort((a, b) => a.ds.localeCompare(b.ds) || (a.h * 60 + a.m) - (b.h * 60 + b.m));
   if (slots.length === 0){
-    slotsBox.innerHTML = '<div class="text-xs text-rose-500 py-3 text-center">조건에 맞는 후보 일정이 없어요. (주말/제외일만 선택됐는지 확인)</div>';
+    slotsBox.innerHTML = '<div class="text-xs text-rose-500 py-3 text-center">조건에 맞는 후보 일정이 없어요.</div>';
     return;
   }
   const MAX = 12;
