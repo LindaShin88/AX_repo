@@ -47,6 +47,20 @@
 
     <section class="bg-white border rounded-xl p-6 space-y-4">
       <h2 class="font-bold text-slate-900">2. 가능 일정 조건</h2>
+      <p class="text-sm text-slate-500">아래 <b>두 가지 방법 중 하나</b>를 선택해 설정하세요.</p>
+      <input type="hidden" name="schedule_mode" id="schedule_mode" value="range">
+      <div class="grid grid-cols-2 gap-3">
+        <button type="button" id="tabA" onclick="pickScheduleMode('range')" class="text-left border-2 rounded-xl p-3 transition">
+          <div class="flex items-center gap-2"><span id="dotA" class="inline-flex w-4 h-4 rounded-full border-2"></span><span class="font-bold text-slate-900 text-sm">📅 날짜 범위로 설정</span></div>
+          <div class="text-xs text-slate-500 mt-1 ml-6">기간을 정하면 평일 후보 자동 생성</div>
+        </button>
+        <button type="button" id="tabB" onclick="pickScheduleMode('direct')" class="text-left border-2 rounded-xl p-3 transition">
+          <div class="flex items-center gap-2"><span id="dotB" class="inline-flex w-4 h-4 rounded-full border-2"></span><span class="font-bold text-slate-900 text-sm">✍️ 날짜 직접 입력</span></div>
+          <div class="text-xs text-slate-500 mt-1 ml-6">원하는 날짜·시간만 직접 적기</div>
+        </button>
+      </div>
+
+      <div id="range-block" class="space-y-4">
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">날짜 범위 - 시작</label>
@@ -116,6 +130,7 @@
           </div>
         </details>
       </div>
+      </div><!-- /#range-block -->
 
       <script>
         function applyTimePreset(kind) {
@@ -151,10 +166,11 @@
       </script>
 
       <div>
-        <div class="flex items-center justify-between mb-2">
-          <label class="block text-sm font-medium text-slate-700">📅 특정 날짜만 다른 시간 (선택)</label>
+        <div class="flex items-center justify-between mb-1">
+          <label id="override-title" class="block text-sm font-medium text-slate-700">📅 특정 날짜만 다른 시간 (선택)</label>
           <span class="text-xs text-slate-400">추가된 <span id="override-count">0</span>개</span>
         </div>
+        <p id="override-note" class="text-xs text-slate-500 mb-2">※ 선택 — 기간 내 특정 날짜만 시간을 다르게 하려면 추가하세요.</p>
 
         <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-2">
           <div class="flex flex-wrap gap-2 items-center text-sm">
@@ -462,36 +478,32 @@ function _mkSlot(ds, h, m, dur){
   const em = h * 60 + m + dur;
   return { ds, dow: d.getDay(), h, m, eh: Math.floor(em / 60), em2: em % 60 };
 }
-// 직접 입력(날짜별 지정) textarea 파싱 → 입력이 있으면 "그 날짜만" 후보로 (날짜 범위 무시)
-function _overrideSlotsForPreview(dur){
+// 직접 입력 textarea → { 'YYYY-MM-DD': ['9:00', ...] } 맵으로 파싱
+function _parseOverrideMap(){
   const ta = document.querySelector('textarea[name="date_overrides"]');
-  if (!ta || !ta.value.trim()) return null;
+  const map = {};
+  if (!ta || !ta.value.trim()) return map;
   const morning = [...document.querySelectorAll('input[name="morning_hours"]:checked')].map(c => c.value);
   const afternoon = [...document.querySelectorAll('input[name="afternoon_hours"]:checked')].map(c => c.value);
   const defM = morning.length ? morning : ['9:00','10:00','11:00'];
   const defA = afternoon.length ? afternoon : ['13:00','14:00','15:00','16:00'];
-  const toHM = x => { const mm = x.match(/^(\d{1,2})(?::(\d{2}))?$/); return mm ? [parseInt(mm[1]), mm[2] ? parseInt(mm[2]) : 0] : null; };
-  const slots = [];
-  let anyValid = false;
+  const norm = x => { const mm = x.match(/^(\d{1,2})(?::(\d{2}))?$/); return mm ? (parseInt(mm[1]) + ':' + (mm[2] || '00')) : null; };
   for (const line of ta.value.split(/\r?\n/)){
     const t = line.trim(); if (!t) continue;
     const m = t.match(/^(\d{4}[-.\/]\d{1,2}[-.\/]\d{1,2}\.?)\s*[:\s]\s*(.+)$/);
     if (!m) continue;
     const date = _normDate(m[1].replace(/\.$/, ''));
     if (!date) continue;
-    anyValid = true;
     const raw = m[2].trim();
     let times;
     if (/^(오전|am|morning)$/i.test(raw)) times = defM;
     else if (/^(오후|pm|afternoon)$/i.test(raw)) times = defA;
     else if (/^(종일|all|allday|all-day|전체)$/i.test(raw)) times = [...defM, ...defA];
     else times = raw.split(/[\s,]+/).filter(Boolean);
-    for (const tt of times){
-      const hm = toHM(tt); if (!hm) continue;
-      slots.push(_mkSlot(date, hm[0], hm[1], dur));
-    }
+    const hm = times.map(norm).filter(Boolean);
+    if (hm.length) map[date] = hm;
   }
-  return anyValid ? slots : null;
+  return map;
 }
 function buildVotePreview(){
   const KO = ['일','월','화','수','목','금','토'];
@@ -503,12 +515,23 @@ function buildVotePreview(){
   if (!slotsBox) return;
   titleBox.textContent = (titleEl && titleEl.value.trim()) || '(회의명 미입력)';
   const dur = parseInt(durEl && durEl.value) || 60;
+  const mode = (document.getElementById('schedule_mode') || {}).value || 'range';
+  const overrideMap = _parseOverrideMap();
+  let slots = [];
 
-  let slots = _overrideSlotsForPreview(dur);
-  const overrideMode = slots !== null;
-
-  if (overrideMode){
-    if (noteBox) noteBox.textContent = '※ 직접 입력한 날짜만 사용 중 — 위 날짜 범위는 무시됩니다.';
+  if (mode === 'direct'){
+    if (noteBox) noteBox.textContent = '※ 직접 입력한 날짜만 사용 (날짜 범위 미사용)';
+    const dates = Object.keys(overrideMap).sort();
+    if (dates.length === 0){
+      slotsBox.innerHTML = '<div class="text-xs text-slate-400 py-3 text-center">아래 "직접 입력"에 날짜를 적으면 투표 화면이 보여요.</div>';
+      return;
+    }
+    for (const ds of dates){
+      for (const tt of overrideMap[ds]){
+        const [h, m] = tt.split(':').map(Number);
+        slots.push(_mkSlot(ds, h, m, dur));
+      }
+    }
   } else {
     if (noteBox) noteBox.textContent = '';
     const wsEl = document.querySelector('input[name="window_start"]');
@@ -517,19 +540,19 @@ function buildVotePreview(){
     const ws = wsEl && wsEl.value, we = weEl && weEl.value;
     const excluded = new Set(((exEl && exEl.value) || '').split(/[\s,]+/).map(_normDate).filter(Boolean));
     const times = [...document.querySelectorAll('input[name="morning_hours"]:checked, input[name="afternoon_hours"]:checked')].map(c => c.value);
-    if (!ws || !we || times.length === 0){
-      slotsBox.innerHTML = '<div class="text-xs text-slate-400 py-3 text-center">날짜 범위와 시간을 선택하거나, 아래 "직접 입력"에 날짜를 적으면 투표 화면이 보여요.</div>';
+    if (!ws || !we || (times.length === 0 && Object.keys(overrideMap).length === 0)){
+      slotsBox.innerHTML = '<div class="text-xs text-slate-400 py-3 text-center">날짜 범위와 시간을 선택하면 투표 화면이 보여요.</div>';
       return;
     }
-    slots = [];
     const start = new Date(ws + 'T00:00:00'), end = new Date(we + 'T00:00:00');
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
-      const dow = d.getDay();
-      if (dow === 0 || dow === 6) continue;
       const ds = d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate());
       if (excluded.has(ds)) continue;
-      for (const t of times){
-        const [h, m] = t.split(':').map(Number);
+      const ov = overrideMap[ds];
+      const dow = d.getDay();
+      if (!ov && (dow === 0 || dow === 6)) continue;
+      for (const tt of (ov || times)){
+        const [h, m] = tt.split(':').map(Number);
         slots.push(_mkSlot(ds, h, m, dur));
       }
     }
@@ -553,6 +576,33 @@ function buildVotePreview(){
   slotsBox.innerHTML = html;
 }
 
+// 방법 A(범위) / B(직접 입력) 전환
+function pickScheduleMode(mode){
+  const range = mode === 'range';
+  const sm = document.getElementById('schedule_mode'); if (sm) sm.value = mode;
+  const rb = document.getElementById('range-block'); if (rb) rb.classList.toggle('hidden', !range);
+  const ws = document.querySelector('input[name="window_start"]'); if (ws) ws.required = range;
+  const we = document.querySelector('input[name="window_end"]'); if (we) we.required = range;
+  const title = document.getElementById('override-title');
+  const note = document.getElementById('override-note');
+  if (title) title.textContent = range ? '📅 특정 날짜만 다른 시간 (선택)' : '✍️ 날짜 직접 입력 / 시간 지정';
+  if (note){
+    note.textContent = range
+      ? '※ 선택 — 기간 내 특정 날짜만 시간을 다르게 하려면 추가하세요.'
+      : '💡 입력한 날짜·시간만 후보가 돼요. 위 날짜 범위는 사용하지 않습니다.';
+    note.className = 'text-xs mb-2 ' + (range ? 'text-slate-500' : 'text-indigo-700 font-medium');
+  }
+  const tabA = document.getElementById('tabA'), tabB = document.getElementById('tabB');
+  const dotA = document.getElementById('dotA'), dotB = document.getElementById('dotB');
+  const on = 'text-left border-2 rounded-xl p-3 transition border-indigo-500 bg-indigo-50';
+  const off = 'text-left border-2 rounded-xl p-3 transition border-slate-200 bg-white hover:border-slate-300';
+  if (tabA) tabA.className = range ? on : off;
+  if (tabB) tabB.className = !range ? on : off;
+  if (dotA) dotA.className = 'inline-flex w-4 h-4 rounded-full border-2 ' + (range ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300');
+  if (dotB) dotB.className = 'inline-flex w-4 h-4 rounded-full border-2 ' + (!range ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300');
+  if (typeof buildPreview === 'function') buildPreview();
+}
+
 function copySmsPreview(btn) {
   const text = document.getElementById('prev-sms-body').textContent;
   navigator.clipboard.writeText(text).then(() => {
@@ -564,6 +614,6 @@ function copySmsPreview(btn) {
 
 form.addEventListener('input', buildPreview);
 form.addEventListener('change', buildPreview);
-buildPreview();
+pickScheduleMode('range'); // 기본: 날짜 범위 방법 (내부에서 buildPreview 호출)
 </script>
 </body></html>

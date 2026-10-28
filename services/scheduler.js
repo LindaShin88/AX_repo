@@ -44,6 +44,8 @@ function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
   const candidates = [];
   const overrides = c.dateOverrides || {};
   const overrideDates = Object.keys(overrides).sort();
+  // 방법 선택: 'range'(날짜 범위) | 'direct'(직접 입력). 옛 데이터 호환: mode 없으면 override 유무로 추정.
+  const mode = c.mode || (overrideDates.length > 0 ? 'direct' : 'range');
 
   const pushDay = (dateStr, rawHours) => {
     const [Y, M, D] = dateStr.split('-').map(Number);
@@ -55,8 +57,8 @@ function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
     }
   };
 
-  // 직접 입력(날짜별 지정)이 있으면 → 날짜 범위는 무시하고 "입력한 날짜만" 후보로 사용
-  if (overrideDates.length > 0) {
+  // 방법 B(직접 입력): 날짜 범위 무시, "입력한 날짜만" 후보로 사용
+  if (mode === 'direct') {
     for (const dateStr of overrideDates) {
       if (excluded.has(dateStr)) continue;
       pushDay(dateStr, overrides[dateStr]);
@@ -64,15 +66,16 @@ function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
     return candidates;
   }
 
-  // 직접 입력이 없으면 → 날짜 범위 + 오전/오후 시간 (주말 제외)
+  // 방법 A(날짜 범위): 범위 내 평일 + 선택 시간. 특정 날짜 지정이 있으면 그 날짜만 시간 교체(예외).
   const start = new Date(c.window.start + 'T00:00:00');
   const end = new Date(c.window.end + 'T00:00:00');
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     if (excluded.has(dateStr)) continue;
+    const hasOverride = overrides[dateStr];
     const dow = d.getDay();
-    if (dow === 0 || dow === 6) continue;
-    pushDay(dateStr, [...(c.morningHours || []), ...(c.afternoonHours || [])]);
+    if (!hasOverride && (dow === 0 || dow === 6)) continue;
+    pushDay(dateStr, hasOverride ? overrides[dateStr] : [...(c.morningHours || []), ...(c.afternoonHours || [])]);
   }
   return candidates;
 }

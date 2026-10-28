@@ -660,6 +660,7 @@ router.post('/committees/:id/meetings', async (req, res) => {
       finalMorningHours,
       finalAfternoonHours,
     ),
+    mode: req.body.schedule_mode === 'direct' ? 'direct' : 'range',
   };
   const channelsArr = [].concat(req.body.notify_channels || ['email','sms']);
   const channels = channelsArr.length ? channelsArr.join(',') : 'email,sms';
