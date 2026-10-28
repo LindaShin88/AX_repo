@@ -58,11 +58,14 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const DbSessionStore = require('./services/session_store');
 app.use(session({
+  store: new DbSessionStore(),       // 세션을 DB에 저장 → 서버 재시작/배포해도 로그인 유지
   secret: process.env.SESSION_SECRET || 'committee-dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 8, httpOnly: true },
+  rolling: true,                     // 활동할 때마다 만료 시간 자동 연장
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 30, httpOnly: true, sameSite: 'lax' }, // 30일
 }));
 
 app.use(attachAdmin);

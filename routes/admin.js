@@ -319,7 +319,7 @@ router.post('/committees/:id/members', async (req, res) => {
     const token = uuidv4();
     db.prepare(`INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'availability')`)
       .run(memberId, mt.id, token);
-    try { await notify.sendAvailabilityRequest(meetingFull, newMember, token, baseUrl); } catch (e) {}
+    try { meetingFull.group_token = ensureGroupToken(mt.id); await notify.sendAvailabilityRequest(meetingFull, newMember, token, baseUrl); } catch (e) {}
 
     const slots = db.prepare('SELECT * FROM meeting_slots WHERE meeting_id = ?').all(mt.id);
     if (slots.length > 0) {
@@ -717,6 +717,7 @@ router.post('/committees/:id/meetings', async (req, res) => {
     JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ?
   `).get(meetingId);
   const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
+  meeting.group_token = ensureGroupToken(meetingId); // SMS 공유 링크용
   for (const m of members) {
     const token = uuidv4();
     insertToken.run(m.id, meetingId, token);
@@ -943,6 +944,7 @@ router.post('/meetings/:id/remind', async (req, res) => {
         }
       }
     } else {
+      meeting.group_token = meeting.group_token || ensureGroupToken(meeting.id);
       await notify.sendReminder(meeting, m, token.token, baseUrl);
     }
     sent += 1;

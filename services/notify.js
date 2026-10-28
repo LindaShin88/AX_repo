@@ -94,6 +94,8 @@ function pickChannels(meeting, member) {
 
 async function sendAvailabilityRequest(meeting, member, token, baseUrl) {
   const link = `${baseUrl}/avail/${token}`;
+  // SMS는 단체문자로 한 번에 보내므로 공유 투표 링크(/g/코드)를 사용. 이메일은 위원별 고유 링크.
+  const smsLink = meeting.group_token ? `${baseUrl}/g/${meeting.group_token}` : link;
   const fromName = getSenderNameForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
@@ -101,7 +103,7 @@ async function sendAvailabilityRequest(meeting, member, token, baseUrl) {
     let subject, content;
     if (channel === 'sms') {
       subject = `[${meeting.committee_name}] 가능일정 회신 요청`;
-      content = `[${meeting.committee_name}]\n위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n로그인 불필요: ${link}`;
+      content = `[${meeting.committee_name}]\n위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n본인 이름 선택 후 응답: ${smsLink}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'availability_request', channel, subject, content, status: 'SMS는 운영자가 직접 발송' }));
     } else {
       subject = `[${meeting.committee_name}] ${meeting.title} 가능일정 회신 요청`;
@@ -120,6 +122,7 @@ async function sendAvailabilityRequest(meeting, member, token, baseUrl) {
 
 async function sendReminder(meeting, member, token, baseUrl) {
   const link = `${baseUrl}/avail/${token}`;
+  const smsLink = meeting.group_token ? `${baseUrl}/g/${meeting.group_token}` : link;
   const fromName = getSenderNameForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
@@ -127,7 +130,7 @@ async function sendReminder(meeting, member, token, baseUrl) {
     let subject, content;
     if (channel === 'sms') {
       subject = `[리마인드] ${meeting.title}`;
-      content = `[리마인드] 위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n${link}`;
+      content = `[리마인드] 위원님, "${meeting.title}" 가능일정 회신 부탁드립니다.\n본인 이름 선택 후 응답: ${smsLink}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'reminder', channel, subject, content, status: 'SMS는 운영자가 직접 발송' }));
     } else {
       subject = `[리마인드] ${meeting.title} 가능일정 회신 부탁드립니다`;
