@@ -171,8 +171,8 @@ async function sendMeetingConfirmed(meeting, member, slot) {
 
 async function sendCreatorConfirmation(meeting, operator, slot, baseUrl) {
   const announcement = buildConfirmedAnnouncement(meeting, slot);
-  const subject = `[자동확정] ${meeting.title} — 회의 일정 확정 안내`;
-  const content = `${operator.name} 운영자님, 안녕하세요.\n\n"${meeting.title}" 회의 일정이 모든 위원의 응답에 따라 자동으로 확정되었습니다.\n전체 위원에게 확정 메일이 발송되었습니다.\n\n${announcement}\n\n──────── 📱 SMS / 카톡 전달용 ────────\n${announcement}\n──────────────────────────────\n\n관리자 페이지: ${baseUrl}/admin/meetings/${meeting.id}\n감사합니다.`;
+  const subject = `[일정 확정] ${meeting.title} — 회의 일정 확정 안내`;
+  const content = `${operator.name} 운영자님, 안녕하세요.\n\n"${meeting.title}" 회의 일정이 확정되었습니다.\n전체 위원에게 확정 안내 메일이 발송되었습니다.\n\n${announcement}\n\n──────── 📱 SMS / 카톡 전달용 ────────\n${announcement}\n──────────────────────────────\n\n관리자 페이지: ${baseUrl}/admin/meetings/${meeting.id}\n감사합니다.`;
   const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderNameForMeeting(meeting));
   const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
   return logNotification({ meetingId: meeting.id, memberId: null, type: 'creator_confirmed', channel: 'email', subject, content, status });
@@ -199,6 +199,32 @@ async function sendCreatorTieChoice(meeting, operator, topSlots, baseUrl) {
   return logNotification({ meetingId: meeting.id, memberId: null, type: 'creator_tie', channel: 'email', subject, content, status });
 }
 
+// 모든 위원이 응답하면 운영자에게 "최종 일정을 직접 확정해달라"는 알림을 1회 보낸다.
+async function sendCreatorReadyToConfirm(meeting, operator, slotsInfo, quorum, baseUrl) {
+  const subject = `[응답 완료] ${meeting.title} — 최종 일정 확정 필요`;
+  const lines = [
+    `${operator.name} 운영자님, 안녕하세요.`,
+    ``,
+    `"${meeting.title}" 회의의 모든 위원 응답이 완료되었습니다.`,
+    quorum > 0
+      ? `정족수(${quorum}명) 이상 가능한 일정은 다음과 같습니다:`
+      : `가능 응답이 가장 많은 일정은 다음과 같습니다:`,
+    ``,
+    ...(slotsInfo.length ? slotsInfo.map(s => `- ${formatKoreanDateTime(s.slot.start_time)} (가능 ${s.available}명)`) : ['- (조건을 충족하는 일정이 아직 없습니다)']),
+    ``,
+    `아래 관리자 페이지에서 원하는 일정의 [확정] 버튼을 눌러 최종 확정해주세요.`,
+    `(확정하면 전체 위원에게 확정 안내가 자동 발송됩니다.)`,
+    `${baseUrl}/admin/meetings/${meeting.id}`,
+    ``,
+    `감사합니다.`,
+  ];
+  const content = lines.join('\n');
+  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderNameForMeeting(meeting));
+  const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
+  return logNotification({ meetingId: meeting.id, memberId: null, type: 'creator_ready', channel: 'email', subject, content, status });
+}
+
+// 자동 확정은 하지 않는다. 전원 응답 시 운영자에게 확정 요청 알림만 1회 보낸다. (확정은 운영자가 직접)
 async function maybeAutoConfirmMeeting(meetingId, baseUrl) {
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name, c.operator_id, c.quorum
@@ -219,35 +245,25 @@ async function maybeAutoConfirmMeeting(meetingId, baseUrl) {
   const allResponded = members.every(m => respondedSet.has(m.id));
   if (!allResponded) return { ok: false, reason: 'not-all-responded' };
 
+  // 전원 응답 알림은 한 번만 (이후 응답 수정으로 중복 발송되지 않게)
+  const already = db.prepare(`SELECT 1 FROM notifications WHERE meeting_id = ? AND type = 'creator_ready' LIMIT 1`).get(meetingId);
+  if (already) return { ok: false, reason: 'already-notified' };
+
   const slots = db.prepare('SELECT * FROM meeting_slots WHERE meeting_id = ? ORDER BY start_time').all(meetingId);
   const counts = slots.map(slot => {
     const n = db.prepare(`SELECT COUNT(*) AS n FROM slot_responses WHERE slot_id = ? AND response = 'available'`).get(slot.id).n;
     return { slot, available: n };
   });
-  if (counts.length === 0) return { ok: false, reason: 'no-slots' };
-  const maxAvail = Math.max(...counts.map(c => c.available));
-  if (maxAvail === 0) return { ok: false, reason: 'no-available' };
-  const topSlots = counts.filter(c => c.available === maxAvail);
+  const maxAvail = counts.length ? Math.max(...counts.map(c => c.available)) : 0;
+  const quorum = meeting.quorum || 0;
+  let eligible = quorum > 0 ? counts.filter(c => c.available >= quorum) : [];
+  if (eligible.length === 0) eligible = maxAvail > 0 ? counts.filter(c => c.available === maxAvail) : [];
 
   const operator = db.prepare('SELECT * FROM operators WHERE id = ?').get(meeting.operator_id);
-
-  if (topSlots.length === 1) {
-    const win = topSlots[0].slot;
-    db.prepare(`UPDATE meetings SET status = 'confirmed', confirmed_slot_id = ?, confirmed_at = CURRENT_TIMESTAMP WHERE id = ?`)
-      .run(win.id, meetingId);
-    for (const m of members) {
-      await sendMeetingConfirmed(meeting, m, win);
-    }
-    if (operator && operator.email) {
-      await sendCreatorConfirmation(meeting, operator, win, baseUrl);
-    }
-    return { ok: true, kind: 'auto-confirmed', slot: win };
-  } else {
-    if (operator && operator.email) {
-      await sendCreatorTieChoice(meeting, operator, topSlots, baseUrl);
-    }
-    return { ok: true, kind: 'tie', topSlots };
+  if (operator && operator.email) {
+    await sendCreatorReadyToConfirm(meeting, operator, eligible, quorum, baseUrl);
   }
+  return { ok: true, kind: 'await-confirm', eligibleCount: eligible.length };
 }
 
 async function sendSignatureRequest(meeting, member, token, baseUrl, opts = {}) {

@@ -114,14 +114,12 @@ router.post('/avail/:token', async (req, res) => {
   db.prepare('UPDATE member_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(token.id);
 
   const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
-  let autoResult = null;
-  try { autoResult = await notify.maybeAutoConfirmMeeting(token.meeting_id, baseUrl); } catch (e) {}
+  // 자동 확정은 하지 않음. 전원 응답 시 운영자에게 "확정 요청" 알림만 보냄.
+  try { await notify.maybeAutoConfirmMeeting(token.meeting_id, baseUrl); } catch (e) {}
 
   res.render('public/thanks', {
     title: '응답이 등록되었습니다',
-    message: autoResult && autoResult.kind === 'auto-confirmed'
-      ? '모든 위원의 응답이 완료되어 회의 일정이 자동 확정되었습니다. 확정 안내 메일을 곧 받으실 거예요.'
-      : '가능 일정 응답이 정상 제출되었습니다. 감사합니다.',
+    message: '가능 일정 응답이 정상 제출되었습니다. 감사합니다.',
   });
 });
 
