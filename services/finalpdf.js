@@ -4,6 +4,9 @@ const path = require('path');
 const fs = require('fs');
 
 const FONT_PATHS = [
+  // 저장소에 포함된 한글 폰트 (서버=리눅스 에서도 동작하는 핵심 경로)
+  path.join(__dirname, '..', 'assets', 'fonts', 'NanumGothic-Regular.ttf'),
+  // 로컬(윈도우) 개발 환경 대비 보조 경로
   'C:\\Windows\\Fonts\\malgun.ttf',
   'C:\\Windows\\Fonts\\malgunbd.ttf',
   'C:\\Windows\\Fonts\\NanumGothic.ttf',
