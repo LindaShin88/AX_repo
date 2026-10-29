@@ -18,6 +18,30 @@ function decodeOriginalName(name) {
   return name;
 }
 
+function fmtKorDateTime(dt) {
+  const d = new Date(String(dt).replace(' ', 'T'));
+  if (isNaN(d.getTime())) return String(dt);
+  const day = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}월 ${d.getDate()}일(${day}) ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 회의가 확정/완료된 경우 투표를 막고 안내 페이지를 띄운다. (막았으면 true)
+function blockIfNotScheduling(token, res) {
+  if (!token.meeting_status || token.meeting_status === 'scheduling') return false;
+  let whenStr = '';
+  if (token.confirmed_slot_id) {
+    const cs = db.prepare('SELECT start_time FROM meeting_slots WHERE id = ?').get(token.confirmed_slot_id);
+    if (cs) whenStr = fmtKorDateTime(cs.start_time);
+  }
+  res.render('public/thanks', {
+    title: '일정이 확정된 회의예요',
+    message: (whenStr ? `회의 일정이 ${whenStr} 로 확정되었습니다. ` : '회의 일정이 확정되었습니다. ')
+      + '더 이상 응답을 받지 않아요. (확정 안내는 메일/문자로 받으실 수 있어요)',
+  });
+  return true;
+}
+
 router.get('/minutes/:token', (req, res) => {
   const token = db.prepare(`
     SELECT t.*, mt.uploaded_minutes_path, mt.uploaded_minutes_original_name
@@ -55,6 +79,7 @@ router.get('/avail/:token', (req, res) => {
   const token = db.prepare(`
     SELECT t.*, m.name AS member_name, m.role, m.affiliation, m.type AS member_type, m.sabun,
            mt.id AS meeting_id, mt.title, mt.description, mt.location, mt.duration_minutes,
+           mt.status AS meeting_status, mt.confirmed_slot_id,
            c.name AS committee_name
     FROM member_tokens t
     JOIN members m ON m.id = t.member_id
@@ -63,6 +88,7 @@ router.get('/avail/:token', (req, res) => {
     WHERE t.token = ? AND t.purpose = 'availability'
   `).get(req.params.token);
   if (!token) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
+  if (blockIfNotScheduling(token, res)) return; // 확정/완료되면 투표 페이지 차단
   const slots = db.prepare('SELECT * FROM meeting_slots WHERE meeting_id = ? ORDER BY start_time').all(token.meeting_id);
   const responses = db.prepare(`
     SELECT * FROM slot_responses WHERE member_id = ? AND slot_id IN (SELECT id FROM meeting_slots WHERE meeting_id = ?)
@@ -74,6 +100,7 @@ router.post('/avail/:token', async (req, res) => {
   const token = db.prepare(`
     SELECT t.*, m.name AS member_name, m.role, m.affiliation, m.type AS member_type, m.sabun,
            mt.id AS meeting_id, mt.title, mt.description, mt.location, mt.duration_minutes,
+           mt.status AS meeting_status, mt.confirmed_slot_id,
            c.name AS committee_name
     FROM member_tokens t
     JOIN members m ON m.id = t.member_id
@@ -82,6 +109,7 @@ router.post('/avail/:token', async (req, res) => {
     WHERE t.token = ? AND t.purpose = 'availability'
   `).get(req.params.token);
   if (!token) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
+  if (blockIfNotScheduling(token, res)) return; // 확정/완료되면 응답 저장 차단
   const slots = db.prepare('SELECT * FROM meeting_slots WHERE meeting_id = ? ORDER BY start_time').all(token.meeting_id);
 
   // 모든 후보 일정에 응답했는지 검증 — 하나라도 빠지면 저장하지 않고 다시 표시

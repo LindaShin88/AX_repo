@@ -17,12 +17,11 @@
   </div>
 
   <div class="bg-white rounded-2xl shadow-sm border p-6">
+    <% if (meeting.status !== 'scheduling') { %>
+      <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-6 text-sm text-center">✅ 이미 일정이 확정된 회의예요.<br>더 이상 응답을 받지 않습니다. (확정 안내는 메일/문자로 받으실 수 있어요)</div>
+    <% } else { %>
     <h3 class="font-bold text-slate-900 mb-1">👤 본인 이름을 선택해주세요</h3>
     <p class="text-xs text-slate-500 mb-4">이름을 누르면 가능 일정 투표 화면으로 이동합니다.</p>
-
-    <% if (meeting.status !== 'scheduling') { %>
-      <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm mb-3">⚠️ 이미 일정이 확정된 회의예요. (응답은 조율 중에만 받아요)</div>
-    <% } %>
 
     <div class="space-y-2">
       <% members.forEach(m => { const tk = tokenByMember[m.id]; const done = respondedSet.has(m.id); %>
@@ -49,6 +48,7 @@
     </div>
 
     <p class="text-xs text-slate-400 mt-4 text-center">본인 이름을 선택해 응답해주세요. 한 번 응답한 뒤에도 다시 들어와 수정할 수 있어요.</p>
+    <% } %>
   </div>
 </main>
 </body></html>
