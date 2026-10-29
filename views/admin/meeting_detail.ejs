@@ -264,19 +264,11 @@
           <span class="text-slate-400 text-sm">/ 정족수 <%= QUORUM %> / 위원 전체 <%= members.length %></span>
         </div>
         <% if (canForceConfirm) { %>
-          <div class="text-xs text-emerald-800 mt-1">✅ 미응답자가 있어도 가능 응답자만으로 성원 충족. 아래 버튼으로 강제 확정 가능.</div>
+          <div class="text-xs text-emerald-800 mt-1">✅ 정족수 충족 — <strong>아래 표에서 원하는 일정의 [확정]</strong>을 눌러 최종 확정하세요. (정족수 충족 일정은 초록으로 표시돼요)</div>
         <% } else { %>
           <div class="text-xs text-amber-800 mt-1">⚠️ 아직 정족수 미달 — 리마인드 후 응답을 추가로 받아야 함.</div>
         <% } %>
       </div>
-      <% if (canForceConfirm && bestQuorumSlot) { %>
-      <form method="POST" action="/admin/meetings/<%= meeting.id %>/confirm"
-            onsubmit="return confirm('성원 충족: 미응답자 있어도 다음 일정으로 강제 확정합니다.\n\n· <%= fmtKor(bestQuorumSlot.slot.start_time) %>\n· 가능 응답 <%= bestAvail %>명 (정족수 <%= QUORUM %>)\n\n진행할까요?')">
-        <input type="hidden" name="slot_id" value="<%= bestQuorumSlot.slot.id %>">
-        <input type="hidden" name="force" value="1">
-        <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-3 rounded-lg text-sm shadow">⚡ 성원 충족 → 강제 확정<br><span class="font-normal text-xs"><%= fmtKor(bestQuorumSlot.slot.start_time) %></span></button>
-      </form>
-      <% } %>
     </div>
   </section>
   <% } %>
