@@ -201,6 +201,10 @@ ensureColumn('members', 'timetable_meta', 'TEXT');
 ensureColumn('meetings', 'uploaded_minutes_path', 'TEXT');
 ensureColumn('meetings', 'uploaded_minutes_original_name', 'TEXT');
 ensureColumn('meetings', 'uploaded_minutes_uploaded_at', 'DATETIME');
+// 업로드한 회의록 파일 "원본 바이트"를 DB에 영구 보관한다.
+// Render의 임시 디스크는 재배포/재시작 때 지워지지만, DB(Turso)는 영구 보존되므로
+// 디스크가 비면 이 blob에서 파일을 다시 만들어낸다(= 미리보기/다운로드/최종 PDF 복구).
+ensureColumn('meetings', 'uploaded_minutes_blob', 'BLOB');
 ensureColumn('meetings', 'final_pdf_path', 'TEXT');
 ensureColumn('meetings', 'final_pdf_generated_at', 'DATETIME');
 ensureColumn('meetings', 'group_token', 'TEXT'); // 공유 투표 링크용 짧은 코드

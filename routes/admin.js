@@ -11,6 +11,7 @@ const { fetchTimetableRaw, fcEventsToTimetable } = require('../services/timetabl
 const hansungOc = require('../services/hansung_oc');
 const hansungDirectory = require('../services/hansung_directory');
 const mailer = require('../services/mailer');
+const minutesStore = require('../services/minutes_store');
 
 // ── 위원 시간표 주간 매트릭스 ────────────────────────────────────────────────
 // 위원회 상세 화면에서 "회의 일정을 잡기 전에" 빈 시간대를 한눈에 보기 위한 집계.
@@ -1028,6 +1029,8 @@ router.post('/meetings/:id/minutes-upload', (req, res) => {
              uploaded_minutes_uploaded_at = CURRENT_TIMESTAMP
        WHERE id = ?
     `).run(relPath, req.file.originalname, meeting.id);
+    // 파일 바이트를 DB에도 영구 저장 → 서버 재배포/재시작으로 디스크가 지워져도 복구 가능
+    minutesStore.storeBlobFromFile(meeting.id, req.file.path);
 
     res.redirect(`/admin/meetings/${meeting.id}?action=minutes-uploaded`);
   });
@@ -1049,7 +1052,8 @@ router.post('/meetings/:id/minutes-delete', (req, res) => {
     UPDATE meetings
        SET uploaded_minutes_path = NULL,
            uploaded_minutes_original_name = NULL,
-           uploaded_minutes_uploaded_at = NULL
+           uploaded_minutes_uploaded_at = NULL,
+           uploaded_minutes_blob = NULL
      WHERE id = ?
   `).run(meeting.id);
   res.redirect(`/admin/meetings/${meeting.id}?action=minutes-deleted`);
@@ -1061,10 +1065,10 @@ router.get('/meetings/:id/uploaded-minutes', (req, res) => {
     WHERE mt.id = ? AND c.operator_id = ?
   `).get(req.params.id, req.session.operatorId);
   if (!meeting || !meeting.uploaded_minutes_path) return res.status(404).send('업로드된 회의록이 없습니다.');
-  const fp = path.join(__dirname, '..', meeting.uploaded_minutes_path);
-  if (!fs.existsSync(fp)) return res.status(404).send('파일을 찾을 수 없습니다.');
-  const cleanName = decodeOriginalName(meeting.uploaded_minutes_original_name) || path.basename(fp);
-  res.download(fp, cleanName);
+  const info = minutesStore.ensureMinutesFile(meeting.id);
+  if (!info) return res.status(404).send('파일을 찾을 수 없습니다.');
+  const cleanName = decodeOriginalName(meeting.uploaded_minutes_original_name) || path.basename(info.absPath);
+  res.download(info.absPath, cleanName);
 });
 
 router.post('/meetings/:id/request-external-signatures', async (req, res) => {
@@ -1168,7 +1172,7 @@ router.post('/meetings/:id/generate-final-pdf', async (req, res) => {
   const committee = db.prepare('SELECT * FROM committees WHERE id = ?').get(meeting.committee_id);
   const externals = db.prepare(`SELECT * FROM members WHERE committee_id = ? AND type IN ('external', 'student')`).all(meeting.committee_id);
   const signatures = db.prepare('SELECT * FROM signatures WHERE meeting_id = ?').all(meeting.id);
-  const uploadedAbs = meeting.uploaded_minutes_path ? path.join(__dirname, '..', meeting.uploaded_minutes_path) : null;
+  const uploadedAbs = meeting.uploaded_minutes_path ? (minutesStore.ensureMinutesFile(meeting.id) || {}).absPath || null : null;
 
   const outDir = path.join(__dirname, '..', 'data', 'pdfs');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });

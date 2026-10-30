@@ -6,6 +6,7 @@ const { getTimetable, busyAt, getTimetableImageUrl } = require('../services/time
 const notify = require('../services/notify');
 const mailer = require('../services/mailer');
 const { generateFinalSignedPDF } = require('../services/finalpdf');
+const minutesStore = require('../services/minutes_store');
 
 const router = express.Router();
 
@@ -51,10 +52,10 @@ router.get('/minutes/:token', (req, res) => {
   `).get(req.params.token);
   if (!token) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
   if (!token.uploaded_minutes_path) return res.status(404).render('public/error', { message: '업로드된 회의록이 없습니다.' });
-  const fp = path.join(__dirname, '..', token.uploaded_minutes_path);
-  if (!fs.existsSync(fp)) return res.status(404).render('public/error', { message: '파일을 찾을 수 없습니다.' });
-  const cleanName = decodeOriginalName(token.uploaded_minutes_original_name) || path.basename(fp);
-  res.download(fp, cleanName);
+  const info = minutesStore.ensureMinutesFile(token.meeting_id);
+  if (!info) return res.status(404).render('public/error', { message: '파일을 찾을 수 없습니다.' });
+  const cleanName = decodeOriginalName(token.uploaded_minutes_original_name) || path.basename(info.absPath);
+  res.download(info.absPath, cleanName);
 });
 
 router.get('/minutes-inline/:token', (req, res) => {
@@ -66,13 +67,13 @@ router.get('/minutes-inline/:token', (req, res) => {
   `).get(req.params.token);
   if (!token) return res.status(404).send('Not found');
   if (!token.uploaded_minutes_path) return res.status(404).send('No file');
-  const fp = path.join(__dirname, '..', token.uploaded_minutes_path);
-  if (!fs.existsSync(fp)) return res.status(404).send('File missing');
-  const ext = path.extname(fp).toLowerCase();
+  const info = minutesStore.ensureMinutesFile(token.meeting_id);
+  if (!info) return res.status(404).send('File missing');
+  const ext = info.ext;
   if (ext === '.pdf') res.type('application/pdf');
   else if (ext === '.hwp' || ext === '.hwpx') res.type('application/x-hwp');
-  res.setHeader('Content-Disposition', 'inline; filename="' + encodeURIComponent(path.basename(fp)) + '"');
-  res.sendFile(fp);
+  res.setHeader('Content-Disposition', 'inline; filename="' + encodeURIComponent(path.basename(info.absPath)) + '"');
+  res.sendFile(info.absPath);
 });
 
 router.get('/avail/:token', (req, res) => {
@@ -242,7 +243,7 @@ router.post('/sign/:token', async (req, res) => {
 
       if (allExternalsSigned) {
         const committee = db.prepare('SELECT * FROM committees WHERE id = ?').get(meeting.committee_id);
-        const uploadedAbs = meeting.uploaded_minutes_path ? path.join(__dirname, '..', meeting.uploaded_minutes_path) : null;
+        const uploadedAbs = meeting.uploaded_minutes_path ? (minutesStore.ensureMinutesFile(meeting.id) || {}).absPath || null : null;
         const outDir = path.join(__dirname, '..', 'data', 'pdfs');
         if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
         const outPath = path.join(outDir, `final_${meeting.id}_${Date.now()}.pdf`);
