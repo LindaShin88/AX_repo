@@ -22,6 +22,26 @@ function expiryOf(sess) {
   return Date.now() + DEFAULT_TTL;
 }
 
+// 세션 저장용 쓰기. Turso 연결이 순간적으로 끊기면("connection closed before message completed")
+// 즉시 다시 시도한다(다음 호출 때 libsql이 새 연결을 맺으므로 대개 바로 복구됨).
+// 끝까지 실패해도 cb(null)로 "성공"처럼 넘긴다 → 세션 한 번 저장이 누락될 뿐,
+// 서버가 죽거나 응답이 깨지지 않는다(이전엔 이 지점에서 프로세스가 종료돼 502가 났다).
+function runWrite(label, fn, cb) {
+  const ATTEMPTS = 3;
+  for (let i = 1; i <= ATTEMPTS; i++) {
+    try {
+      fn();
+      return cb && cb(null);
+    } catch (e) {
+      if (i === ATTEMPTS) {
+        console.error(`[session store] ${label} 저장 실패(${i}회 시도 후 포기, 서비스는 계속):`, e.message);
+        return cb && cb(null);
+      }
+      // 즉시 재시도
+    }
+  }
+}
+
 class DbSessionStore extends session.Store {
   get(sid, cb) {
     try {
@@ -35,22 +55,21 @@ class DbSessionStore extends session.Store {
     } catch (e) { return cb(e); }
   }
   set(sid, sess, cb) {
-    try {
+    runWrite('set', () => {
       db.prepare(`INSERT INTO sessions (sid, sess, expire) VALUES (?, ?, ?)
                   ON CONFLICT(sid) DO UPDATE SET sess = excluded.sess, expire = excluded.expire`)
         .run(sid, JSON.stringify(sess), expiryOf(sess));
-      return cb && cb(null);
-    } catch (e) { return cb && cb(e); }
+    }, cb);
   }
   touch(sid, sess, cb) {
-    try {
+    runWrite('touch', () => {
       db.prepare('UPDATE sessions SET expire = ? WHERE sid = ?').run(expiryOf(sess), sid);
-      return cb && cb(null);
-    } catch (e) { return cb && cb(e); }
+    }, cb);
   }
   destroy(sid, cb) {
-    try { db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid); return cb && cb(null); }
-    catch (e) { return cb && cb(e); }
+    runWrite('destroy', () => {
+      db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
+    }, cb);
   }
 }
 

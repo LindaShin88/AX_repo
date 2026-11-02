@@ -81,6 +81,9 @@ app.use('/', publicRoutes);
 app.use((req, res) => res.status(404).render('public/error', { message: '페이지를 찾을 수 없습니다.' }));
 app.use((err, req, res, next) => {
   console.error(err);
+  // 이미 응답 헤더/본문이 나간 뒤라면(예: 리다이렉트 후 세션 저장 실패) 다시 쓰지 않는다.
+  // 여기서 또 render를 하면 ERR_HTTP_HEADERS_SENT가 나고, 그게 프로세스를 죽여(502) 전체 서비스가 내려간다.
+  if (res.headersSent) return next(err);
   res.status(500).render('public/error', { message: '서버 오류가 발생했습니다: ' + err.message });
 });
 
