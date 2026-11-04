@@ -785,12 +785,13 @@ router.get('/meetings/:id', (req, res) => {
     SELECT * FROM member_tokens WHERE meeting_id = ?
   `).all(meeting.id);
   const signatures = db.prepare('SELECT * FROM signatures WHERE meeting_id = ?').all(meeting.id);
-  // SMS는 앱이 실제로 보내는 게 아니라(운영자 수동 발송용) 기록만 남으므로 발송 로그에서는 제외.
-  // (SMS 원본은 'SMS 수동 발송' 페이지에서 그대로 사용되니 DB에는 보존됨)
+  // 발송 로그에는 앱이 실제로 보내는 '메일(email)'만 표시한다.
+  // SMS/ARS는 앱이 직접 보내는 게 아니라(운영자 수동 발송용) 기록만 남으므로 제외.
+  // (SMS 원본은 'SMS 수동 발송' 페이지에서 그대로 쓰이니 DB에는 보존됨)
   const notifications = db.prepare(`
     SELECT n.*, m.name AS member_name FROM notifications n
     LEFT JOIN members m ON m.id = n.member_id
-    WHERE n.meeting_id = ? AND n.channel != 'sms'
+    WHERE n.meeting_id = ? AND n.channel = 'email'
     ORDER BY n.sent_at DESC
   `).all(meeting.id).map(parseSendStatus);
   const confirmedSlot = meeting.confirmed_slot_id
@@ -1306,7 +1307,7 @@ router.get('/notifications', (req, res) => {
     LEFT JOIN members m ON m.id = n.member_id
     LEFT JOIN meetings mt ON mt.id = n.meeting_id
     LEFT JOIN committees c ON c.id = mt.committee_id
-    WHERE c.operator_id = ? AND n.channel != 'sms'
+    WHERE c.operator_id = ? AND n.channel = 'email'
     ORDER BY n.sent_at DESC LIMIT 200
   `).all(req.session.operatorId).map(parseSendStatus);
   res.render('admin/notifications', { notifications: notifs });
