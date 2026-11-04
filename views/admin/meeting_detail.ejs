@@ -833,6 +833,13 @@
 
   <section class="bg-white border rounded-xl p-5">
     <h2 class="font-bold text-slate-900 mb-3">📨 알림 발송 로그</h2>
+    <% if (mailSummary && mailSummary.total > 0) { %>
+      <% if (mailSummary.fail === 0) { %>
+        <div class="text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-3">✅ 메일 전체 발송 성공 (<%= mailSummary.success %>/<%= mailSummary.total %>)</div>
+      <% } else { %>
+        <div class="text-sm font-semibold text-slate-700 bg-slate-50 border rounded-lg px-3 py-2 mb-3">📬 메일 <%= mailSummary.total %>건 · <span class="text-emerald-600">✅ 성공 <%= mailSummary.success %></span> · <span class="text-red-600">❌ 실패 <%= mailSummary.fail %> (<%= mailSummary.failNames.join(', ') %>)</span></div>
+      <% } %>
+    <% } %>
     <div class="space-y-2 max-h-96 overflow-y-auto">
       <% notifications.forEach(n => { %>
         <div class="border rounded-lg p-3">

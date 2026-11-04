@@ -794,6 +794,20 @@ router.get('/meetings/:id', (req, res) => {
     WHERE n.meeting_id = ? AND n.channel = 'email'
     ORDER BY n.sent_at DESC
   `).all(meeting.id).map(parseSendStatus);
+  // 발송 로그 맨 위에 한 줄로 보여줄 요약(성공/실패 집계 + 실패자 이름)
+  const mailSummary = (() => {
+    let success = 0, fail = 0; const failNames = [];
+    for (const n of notifications) {
+      if (!n.sendStatus) continue;
+      if (n.sendStatus.ok === true) success++;
+      else if (n.sendStatus.ok === false) {
+        fail++;
+        const nm = n.member_name || '전체';
+        if (!failNames.includes(nm)) failNames.push(nm);
+      }
+    }
+    return { total: success + fail, success, fail, failNames };
+  })();
   const confirmedSlot = meeting.confirmed_slot_id
     ? db.prepare('SELECT * FROM meeting_slots WHERE id = ?').get(meeting.confirmed_slot_id)
     : null;
@@ -885,7 +899,7 @@ router.get('/meetings/:id', (req, res) => {
   }
 
   res.render('admin/meeting_detail', {
-    meeting, slots, members, responses, tokens, signatures, notifications,
+    meeting, slots, members, responses, tokens, signatures, notifications, mailSummary,
     confirmedSlot, slotMatrix, baseUrl: `${req.protocol}://${req.get('host')}`,
     groupToken,
     getTimetableImageUrl, progress,
