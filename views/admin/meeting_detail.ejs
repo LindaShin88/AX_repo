@@ -848,11 +848,18 @@
               }[n.type] || ['badge-gray', n.type]; %>
               <span class="badge <%= typeBadge[0] %>"><%= typeBadge[1] %></span>
               <span class="font-medium"><%= n.member_name || '전체' %></span>
-              <span class="text-xs text-slate-400">[<%= n.channel %>]</span>
+              <% if (n.sendStatus && n.sendStatus.ok === true) { %>
+                <span class="badge badge-green">✅ 발송 성공</span>
+              <% } else if (n.sendStatus && n.sendStatus.ok === false) { %>
+                <span class="badge badge-red">❌ 발송 실패</span>
+              <% } %>
             </div>
             <span class="text-xs text-slate-400"><%= n.sent_at %></span>
           </div>
           <div class="text-xs text-slate-700 font-medium"><%= n.subject %></div>
+          <% if (n.sendStatus && n.sendStatus.ok === false && n.sendStatus.detail) { %>
+            <div class="text-xs text-red-600 mt-1">⚠️ 실패 사유: <%= n.sendStatus.detail %></div>
+          <% } %>
           <pre class="text-xs text-slate-500 mt-1 whitespace-pre-wrap font-sans"><%= n.content %></pre>
         </div>
       <% }) %>

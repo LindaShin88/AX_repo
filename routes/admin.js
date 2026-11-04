@@ -13,6 +13,23 @@ const hansungDirectory = require('../services/hansung_directory');
 const mailer = require('../services/mailer');
 const minutesStore = require('../services/minutes_store');
 
+// 알림 content 끝에 붙은 "[발송상태: ...]" 꼬리표를 파싱해, 화면에서 뱃지로 보여줄 수 있게
+// sendStatus 로 분리하고 본문에서는 그 꼬리표를 떼어낸다.
+//  - "발송 OK ..."  -> { ok: true }
+//  - "실패: ..."    -> { ok: false, detail }
+//  - 그 외          -> { ok: null, note }
+function parseSendStatus(n) {
+  const content = String(n.content || '');
+  const m = content.match(/\[발송상태:\s*([\s\S]*)\]\s*$/);
+  if (!m) { n.sendStatus = null; return n; }
+  const s = m[1].trim();
+  if (s.startsWith('발송 OK')) n.sendStatus = { ok: true };
+  else if (s.startsWith('실패')) n.sendStatus = { ok: false, detail: s.replace(/^실패:\s*/, '') };
+  else n.sendStatus = { ok: null, note: s };
+  n.content = content.slice(0, m.index).replace(/\s+$/, '');
+  return n;
+}
+
 // ── 위원 시간표 주간 매트릭스 ────────────────────────────────────────────────
 // 위원회 상세 화면에서 "회의 일정을 잡기 전에" 빈 시간대를 한눈에 보기 위한 집계.
 // DB에 이미 캐시된 시간표(timetable_cache)만 사용하므로 크롤링 없이 즉시 계산된다.
@@ -768,11 +785,14 @@ router.get('/meetings/:id', (req, res) => {
     SELECT * FROM member_tokens WHERE meeting_id = ?
   `).all(meeting.id);
   const signatures = db.prepare('SELECT * FROM signatures WHERE meeting_id = ?').all(meeting.id);
+  // SMS는 앱이 실제로 보내는 게 아니라(운영자 수동 발송용) 기록만 남으므로 발송 로그에서는 제외.
+  // (SMS 원본은 'SMS 수동 발송' 페이지에서 그대로 사용되니 DB에는 보존됨)
   const notifications = db.prepare(`
     SELECT n.*, m.name AS member_name FROM notifications n
     LEFT JOIN members m ON m.id = n.member_id
-    WHERE n.meeting_id = ? ORDER BY n.sent_at DESC
-  `).all(meeting.id);
+    WHERE n.meeting_id = ? AND n.channel != 'sms'
+    ORDER BY n.sent_at DESC
+  `).all(meeting.id).map(parseSendStatus);
   const confirmedSlot = meeting.confirmed_slot_id
     ? db.prepare('SELECT * FROM meeting_slots WHERE id = ?').get(meeting.confirmed_slot_id)
     : null;
@@ -1286,9 +1306,9 @@ router.get('/notifications', (req, res) => {
     LEFT JOIN members m ON m.id = n.member_id
     LEFT JOIN meetings mt ON mt.id = n.meeting_id
     LEFT JOIN committees c ON c.id = mt.committee_id
-    WHERE c.operator_id = ?
+    WHERE c.operator_id = ? AND n.channel != 'sms'
     ORDER BY n.sent_at DESC LIMIT 200
-  `).all(req.session.operatorId);
+  `).all(req.session.operatorId).map(parseSendStatus);
   res.render('admin/notifications', { notifications: notifs });
 });
 
