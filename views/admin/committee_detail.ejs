@@ -107,7 +107,7 @@
           ✅ <strong><%= autoCrawl.name %></strong> 교원 추가 + 시간표 자동 연결 완료
           (<%= autoCrawl.yearhakgi.slice(0,4) %>-<%= autoCrawl.yearhakgi.slice(4) %>학기, 강의 <%= autoCrawl.classCount %>건, 슬롯 <%= autoCrawl.slotCount %>개)
           <% if (autoCrawl.disambiguated && autoCrawl.disamb) { %>
-            <div class="mt-2 text-xs bg-white border border-emerald-400 rounded px-2 py-1 text-emerald-800">🔀 동명이인 분리 적용 — 선택하신 <strong><%= autoCrawl.disamb.dept %></strong> 소속 강의만 반영 (전체 <%= autoCrawl.disamb.fromCount %>개 → <%= autoCrawl.disamb.keptCount %>개)</div>
+            <div class="mt-2 text-xs bg-white border border-emerald-400 rounded px-2 py-1 text-emerald-800">🔀 동명이인 분리 적용 — 선택한 학과 강의만 반영 (전체 <%= autoCrawl.disamb.fromCount %>개 → <%= autoCrawl.disamb.keptCount %>개)</div>
           <% } %>
           <% if (autoCrawl.matchedMajors.length > 1) { %>
             <div class="mt-2 text-xs">
@@ -191,7 +191,8 @@
           <input id="add-affiliation" name="affiliation" placeholder="소속 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
           <input id="add-sabun" name="sabun" placeholder="사번 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm" data-faculty-staff-student>
           <input id="add-phone" name="phone" placeholder="전화번호 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
-          <input type="hidden" id="add-disambiguate" name="_disambiguate" value="">
+          <input type="hidden" id="add-crawl-key" name="_crawl_key" value="">
+          <input type="hidden" id="add-keep-majors" name="_keep_majors" value="">
           <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가 (교원 시간표 자동 반영)</button>
         </form>
 
@@ -335,48 +336,68 @@
             document.getElementById('lookup-modal').classList.remove('hidden');
           }
 
-          let _addVerified = false;          // 교원 추가 전 동명이인 확인을 마쳤는지
-          let _forceSubmitAfterSelect = false;
+          let _addVerified = false;   // 교원 추가 전 시간표 확인(학과 선택)을 마쳤는지
+          let _crawlKey = '';
 
-          function selectMatch(i) {
-            const m = window._lookupMatches[i];
-            fillFromMatch(m);                 // 사번·소속 채우고 팝업 닫기
-            if (_forceSubmitAfterSelect) {
-              _forceSubmitAfterSelect = false;
-              _addVerified = true;
-              document.getElementById('add-disambiguate').value = '1';  // 서버: 선택한 학과로 시간표 필터
-              document.getElementById('add-member-form').requestSubmit();
-            }
+          function _esc(s) {
+            return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
           }
 
-          // "+ 위원 추가"(교원)를 누르면, 사번을 직접 입력하지 않은 경우 먼저 디렉토리에서 동명이인을 확인한다.
-          // 동명이인이면 선택 팝업을 띄워 한 명을 고르게 하고, 그 사람의 학과 기준으로만 시간표를 반영한다.
+          // "+ 위원 추가"(교원)를 누르면, 이름으로 시간표를 먼저 미리 긁어 학과가 몇 개 잡히는지 확인한다.
+          // 여러 학과가 잡히면(동명이인 가능) 학과 선택 팝업을 띄워, 고른 학과의 강의만 시간표에 반영한다.
           document.getElementById('add-member-form').addEventListener('submit', async function (e) {
             const type = document.querySelector('input[name="type"]:checked')?.value;
             const name = document.getElementById('add-name').value.trim();
-            const sabun = document.getElementById('add-sabun').value.trim();
-            if (type !== 'faculty' || !name || sabun || _addVerified) return;  // 그 외엔 정상 제출
+            if (type !== 'faculty' || !name || _addVerified) return;  // 교원 외/빈 이름/이미 확인됨 → 정상 제출
             e.preventDefault();
             const btn = this.querySelector('button.col-span-2');
-            const orig = btn.innerText; btn.disabled = true; btn.innerText = '⏳ 교원 확인 중...';
+            const orig = btn.innerText; btn.disabled = true; btn.innerText = '⏳ 시간표 확인 중...';
             try {
-              const resp = await fetch('/admin/lookup-professor?name=' + encodeURIComponent(name) + '&_=' + Date.now(), { cache: 'no-store' });
+              const resp = await fetch('/admin/committees/<%= committee.id %>/faculty-timetable-preview?name=' + encodeURIComponent(name) + '&_=' + Date.now(), { cache: 'no-store' });
               const data = await resp.json();
-              if (!data.matches || data.matches.length === 0) {
-                _addVerified = true; this.requestSubmit();              // 디렉토리에 없음 → 그대로 추가
-              } else if (data.matches.length === 1) {
-                fillFromMatch(data.matches[0]);                          // 한 명 → 자동 채움 후 추가
-                _addVerified = true; this.requestSubmit();
+              _crawlKey = data.cacheKey || '';
+              document.getElementById('add-crawl-key').value = _crawlKey;
+              const majors = data.matchedMajors || [];
+              if (majors.length <= 1) {
+                _addVerified = true; this.requestSubmit();   // 학과 1개(또는 0) → 모호하지 않음, 그대로 추가
               } else {
-                _forceSubmitAfterSelect = true;                          // 동명이인 → 선택 팝업
-                showLookupResult(name, data);
+                showDeptPicker(name, majors);                // 여러 학과 → 선택 팝업
               }
             } catch (err) {
-              _addVerified = true; this.requestSubmit();                 // 조회 실패해도 추가는 되게(이름 기반)
+              _addVerified = true; this.requestSubmit();     // 조회 실패해도 추가는 되게(전체 반영)
             } finally {
               btn.disabled = false; btn.innerText = orig;
             }
           });
+
+          function showDeptPicker(name, majors) {
+            document.getElementById('lookup-title').innerText = '🔀 여러 학과 강의 발견 — 추가할 분 선택';
+            document.getElementById('lookup-body').innerHTML =
+              '<p class="text-xs text-slate-500 mb-3">"<strong>' + _esc(name) + '</strong>" 이름으로 <strong>' + majors.length + '개 학과</strong>의 강의가 잡혔어요. 동명이인일 수 있어요.<br>추가하려는 분의 <strong>학과를 선택</strong>하세요. (여러 개 선택 가능 — 다른 분 학과는 체크 해제)</p>' +
+              majors.map(function (m) {
+                var titles = (m.sampleTitles || []).map(_esc).join(', ');
+                var more = m.classCount > (m.sampleTitles || []).length ? ' …' : '';
+                return '<label class="flex items-start gap-2 border rounded-lg p-3 mb-2 hover:bg-slate-50 cursor-pointer">' +
+                  '<input type="checkbox" class="dept-chk mt-0.5" value="' + _esc(m.code) + '" checked>' +
+                  '<span><span class="font-semibold text-sm">' + _esc(m.name) + '</span> <span class="text-xs text-slate-500">· 강의 ' + m.classCount + '건</span>' +
+                  '<span class="block text-xs text-slate-500 mt-0.5">' + titles + more + '</span></span></label>';
+              }).join('') +
+              '<div class="flex gap-2 mt-3">' +
+              '<button type="button" onclick="confirmDeptPick()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded px-3 py-2 text-sm font-semibold">선택한 학과로 추가</button>' +
+              '<button type="button" onclick="closeLookupModal()" class="border rounded px-4 py-2 text-sm">취소</button></div>';
+            document.getElementById('lookup-backdrop').classList.remove('hidden');
+            document.getElementById('lookup-modal').classList.remove('hidden');
+          }
+
+          function confirmDeptPick() {
+            var checked = Array.from(document.querySelectorAll('.dept-chk:checked')).map(function (c) { return c.value; });
+            if (checked.length === 0) { alert('최소 한 개 학과를 선택해주세요.'); return; }
+            document.getElementById('add-keep-majors').value = checked.join(',');
+            document.getElementById('add-crawl-key').value = _crawlKey;
+            closeLookupModal();
+            _addVerified = true;
+            document.getElementById('add-member-form').requestSubmit();
+          }
 
           function closeLookupModal() {
             document.getElementById('lookup-backdrop').classList.add('hidden');

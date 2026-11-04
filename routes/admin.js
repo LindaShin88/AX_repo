@@ -30,20 +30,14 @@ function parseSendStatus(n) {
   return n;
 }
 
-// 동명이인 분리용: 선택한 소속(학과) 문자열에 해당하는 강의만 남긴다.
-// 수업마다 붙은 'major'(학과명) 태그와 소속을 느슨하게 비교(공백·괄호 무시, 양방향 부분일치).
-// 하나도 매칭 안 되면(두 시스템의 학과 명칭 체계가 달라 못 거른 경우) 데이터 보존을 위해 전부 유지한다.
-function filterClassesByAffiliation(entries, affiliation) {
-  const norm = s => String(s || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, '').toLowerCase();
-  const depts = String(affiliation || '').split(/[·,/|]/).map(norm).filter(Boolean);
-  if (!depts.length) return { applied: false, entries };
-  if (!entries.some(e => e.major)) return { applied: false, entries };
-  const kept = entries.filter(e => {
-    const maj = norm(e.major);
-    return maj && depts.some(d => d.includes(maj) || maj.includes(d));
-  });
-  if (!kept.length) return { applied: false, entries };
-  return { applied: true, entries: kept, keptCount: kept.length, fromCount: entries.length };
+// 교원 시간표 임시 크롤 캐시: "+ 위원 추가" 전 미리보기(preview)에서 긁은 결과를
+// 실제 추가(commit) 때 재사용해 이중 크롤을 피한다. 5분 지나면 폐기.
+const facultyCrawlCache = new Map();
+function cacheFacultyCrawl(key, data) {
+  facultyCrawlCache.set(key, { at: Date.now(), ...data });
+  for (const [k, v] of facultyCrawlCache) {
+    if (Date.now() - v.at > 5 * 60 * 1000) facultyCrawlCache.delete(k);
+  }
 }
 
 // ── 위원 시간표 주간 매트릭스 ────────────────────────────────────────────────
@@ -305,18 +299,27 @@ router.post('/committees/:id/members', async (req, res) => {
   const memberId = info.lastInsertRowid;
 
   if (type === 'faculty') {
-    const yearhakgi = hansungOc.dateToYearHakgi(new Date());
+    const crawlKey = String(req.body._crawl_key || '');
+    const keepMajors = String(req.body._keep_majors || '').split(',').map(s => s.trim()).filter(Boolean);
+    const cached = crawlKey ? facultyCrawlCache.get(crawlKey) : null;
+    const yearhakgi = cached ? cached.yearhakgi : hansungOc.dateToYearHakgi(new Date());
     try {
-      const result = await hansungOc.findProfessorClasses(yearhakgi, name, { concurrency: 6 });
-      let cacheEntries = result.timetable.map(e => ({
-        day: e.day, start: e.start, end: e.end, title: e.title,
-        location: e.location, bunban: e.bunban, major: e.major, majorCode: e.majorCode,
-      }));
-      // 동명이인: 운영자가 팝업에서 고른 사람의 소속(학과)에 해당하는 강의만 남긴다.
+      let cacheEntries;
+      if (cached) {
+        cacheEntries = cached.cacheEntries;   // 미리보기에서 긁은 결과 재사용(이중 크롤 방지)
+      } else {
+        const result = await hansungOc.findProfessorClasses(yearhakgi, name, { concurrency: 6 });
+        cacheEntries = result.timetable.map(e => ({
+          day: e.day, start: e.start, end: e.end, title: e.title,
+          location: e.location, bunban: e.bunban, major: e.major, majorCode: e.majorCode,
+        }));
+      }
+      // 동명이인: 운영자가 팝업에서 고른 학과의 강의만 남긴다(선택이 있을 때만).
       let disamb = null;
-      if (req.body._disambiguate === '1') {
-        const f = filterClassesByAffiliation(cacheEntries, affiliation);
-        if (f.applied) { cacheEntries = f.entries; disamb = { dept: affiliation, keptCount: f.keptCount, fromCount: f.fromCount }; }
+      if (keepMajors.length) {
+        const before = cacheEntries.length;
+        const kept = cacheEntries.filter(e => keepMajors.includes(String(e.majorCode || e.major || '')));
+        if (kept.length) { cacheEntries = kept; disamb = { fromCount: before, keptCount: kept.length }; }
       }
       // 최종 반영된 강의를 기준으로 학과/건수 재계산(배너·메타 표시용)
       const majorMap = new Map();
@@ -354,6 +357,8 @@ router.post('/committees/:id/members', async (req, res) => {
         committeeId: committee.id, memberId, name, yearhakgi,
         error: err.message,
       };
+    } finally {
+      if (crawlKey) facultyCrawlCache.delete(crawlKey);
     }
   }
 
@@ -619,6 +624,39 @@ router.get('/lookup-professor', async (req, res) => {
     res.json(result);
   } catch (e) {
     res.json({ matches: [], reason: 'error', error: e.message });
+  }
+});
+
+// "+ 위원 추가"(교원) 전에 이름으로 시간표를 미리 긁어, 학과별로 몇 강의가 잡히는지 돌려준다.
+// 동명이인이면 여러 학과가 나오므로, 프런트에서 학과 선택 팝업을 띄워 한 사람 것만 고르게 한다.
+router.get('/committees/:id/faculty-timetable-preview', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const committee = db.prepare('SELECT id FROM committees WHERE id = ? AND operator_id = ?')
+    .get(req.params.id, req.session.operatorId);
+  if (!committee) return res.status(404).json({ error: 'not-found' });
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.json({ matchedMajors: [] });
+  try {
+    const yearhakgi = hansungOc.dateToYearHakgi(new Date());
+    const result = await hansungOc.findProfessorClasses(yearhakgi, name, { concurrency: 6 });
+    const cacheEntries = result.timetable.map(e => ({
+      day: e.day, start: e.start, end: e.end, title: e.title,
+      location: e.location, bunban: e.bunban, major: e.major, majorCode: e.majorCode,
+    }));
+    const grp = new Map();
+    for (const e of cacheEntries) {
+      const code = String(e.majorCode || e.major || '');
+      if (!grp.has(code)) grp.set(code, { code, name: e.major || '(미상)', titles: new Set() });
+      grp.get(code).titles.add(e.title);
+    }
+    const matchedMajors = [...grp.values()].map(g => ({
+      code: g.code, name: g.name, classCount: g.titles.size, sampleTitles: [...g.titles].slice(0, 4),
+    }));
+    const cacheKey = uuidv4();
+    cacheFacultyCrawl(cacheKey, { name, yearhakgi, cacheEntries });
+    res.json({ cacheKey, yearhakgi, slotCount: cacheEntries.length, matchedMajors });
+  } catch (e) {
+    res.json({ matchedMajors: [], error: e.message });
   }
 });
 
