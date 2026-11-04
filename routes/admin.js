@@ -30,6 +30,22 @@ function parseSendStatus(n) {
   return n;
 }
 
+// 동명이인 분리용: 선택한 소속(학과) 문자열에 해당하는 강의만 남긴다.
+// 수업마다 붙은 'major'(학과명) 태그와 소속을 느슨하게 비교(공백·괄호 무시, 양방향 부분일치).
+// 하나도 매칭 안 되면(두 시스템의 학과 명칭 체계가 달라 못 거른 경우) 데이터 보존을 위해 전부 유지한다.
+function filterClassesByAffiliation(entries, affiliation) {
+  const norm = s => String(s || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, '').toLowerCase();
+  const depts = String(affiliation || '').split(/[·,/|]/).map(norm).filter(Boolean);
+  if (!depts.length) return { applied: false, entries };
+  if (!entries.some(e => e.major)) return { applied: false, entries };
+  const kept = entries.filter(e => {
+    const maj = norm(e.major);
+    return maj && depts.some(d => d.includes(maj) || maj.includes(d));
+  });
+  if (!kept.length) return { applied: false, entries };
+  return { applied: true, entries: kept, keptCount: kept.length, fromCount: entries.length };
+}
+
 // ── 위원 시간표 주간 매트릭스 ────────────────────────────────────────────────
 // 위원회 상세 화면에서 "회의 일정을 잡기 전에" 빈 시간대를 한눈에 보기 위한 집계.
 // DB에 이미 캐시된 시간표(timetable_cache)만 사용하므로 크롤링 없이 즉시 계산된다.
@@ -292,17 +308,34 @@ router.post('/committees/:id/members', async (req, res) => {
     const yearhakgi = hansungOc.dateToYearHakgi(new Date());
     try {
       const result = await hansungOc.findProfessorClasses(yearhakgi, name, { concurrency: 6 });
-      const cacheEntries = result.timetable.map(e => ({
+      let cacheEntries = result.timetable.map(e => ({
         day: e.day, start: e.start, end: e.end, title: e.title,
         location: e.location, bunban: e.bunban, major: e.major, majorCode: e.majorCode,
       }));
+      // 동명이인: 운영자가 팝업에서 고른 사람의 소속(학과)에 해당하는 강의만 남긴다.
+      let disamb = null;
+      if (req.body._disambiguate === '1') {
+        const f = filterClassesByAffiliation(cacheEntries, affiliation);
+        if (f.applied) { cacheEntries = f.entries; disamb = { dept: affiliation, keptCount: f.keptCount, fromCount: f.fromCount }; }
+      }
+      // 최종 반영된 강의를 기준으로 학과/건수 재계산(배너·메타 표시용)
+      const majorMap = new Map();
+      for (const e of cacheEntries) {
+        if (!e.major) continue;
+        const key = e.majorCode || e.major;
+        if (!majorMap.has(key)) majorMap.set(key, { code: e.majorCode, name: e.major, set: new Set() });
+        majorMap.get(key).set.add(`${e.title}|${e.bunban || ''}`);
+      }
+      const matchedMajors = [...majorMap.values()].map(v => ({ code: v.code, name: v.name, classCount: v.set.size }));
+      const classCount = new Set(cacheEntries.map(e => `${e.majorCode || ''}|${e.title}|${e.bunban || ''}`)).size;
       const meta = {
         yearhakgi,
         crawledAt: new Date().toISOString(),
-        matchedMajors: result.matchedMajors,
-        classCount: result.classes.length,
+        matchedMajors,
+        classCount,
         slotCount: cacheEntries.length,
         searchName: name,
+        disambiguated: !!disamb,
       };
       db.prepare(`
         UPDATE members
@@ -312,8 +345,9 @@ router.post('/committees/:id/members', async (req, res) => {
       `).run(JSON.stringify(cacheEntries), JSON.stringify(meta), memberId);
       req.session.lastFacultyAutoCrawl = {
         committeeId: committee.id, memberId, name,
-        yearhakgi, matchedMajors: result.matchedMajors,
-        classCount: result.classes.length, slotCount: cacheEntries.length,
+        yearhakgi, matchedMajors,
+        classCount, slotCount: cacheEntries.length,
+        disambiguated: !!disamb, disamb,
       };
     } catch (err) {
       req.session.lastFacultyAutoCrawl = {

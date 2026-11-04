@@ -106,6 +106,9 @@
         <div class="mb-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-3 text-sm">
           ✅ <strong><%= autoCrawl.name %></strong> 교원 추가 + 시간표 자동 연결 완료
           (<%= autoCrawl.yearhakgi.slice(0,4) %>-<%= autoCrawl.yearhakgi.slice(4) %>학기, 강의 <%= autoCrawl.classCount %>건, 슬롯 <%= autoCrawl.slotCount %>개)
+          <% if (autoCrawl.disambiguated && autoCrawl.disamb) { %>
+            <div class="mt-2 text-xs bg-white border border-emerald-400 rounded px-2 py-1 text-emerald-800">🔀 동명이인 분리 적용 — 선택하신 <strong><%= autoCrawl.disamb.dept %></strong> 소속 강의만 반영 (전체 <%= autoCrawl.disamb.fromCount %>개 → <%= autoCrawl.disamb.keptCount %>개)</div>
+          <% } %>
           <% if (autoCrawl.matchedMajors.length > 1) { %>
             <div class="mt-2 text-xs">
               🔀 여러 학과에서 동일 이름 매칭 (자동 병합):
@@ -188,6 +191,7 @@
           <input id="add-affiliation" name="affiliation" placeholder="소속 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
           <input id="add-sabun" name="sabun" placeholder="사번 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm" data-faculty-staff-student>
           <input id="add-phone" name="phone" placeholder="전화번호 (선택)" autocomplete="off" class="border rounded-lg px-3 py-2 text-sm">
+          <input type="hidden" id="add-disambiguate" name="_disambiguate" value="">
           <button class="col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">+ 위원 추가 (교원 시간표 자동 반영)</button>
         </form>
 
@@ -331,10 +335,48 @@
             document.getElementById('lookup-modal').classList.remove('hidden');
           }
 
+          let _addVerified = false;          // 교원 추가 전 동명이인 확인을 마쳤는지
+          let _forceSubmitAfterSelect = false;
+
           function selectMatch(i) {
             const m = window._lookupMatches[i];
-            fillFromMatch(m);
+            fillFromMatch(m);                 // 사번·소속 채우고 팝업 닫기
+            if (_forceSubmitAfterSelect) {
+              _forceSubmitAfterSelect = false;
+              _addVerified = true;
+              document.getElementById('add-disambiguate').value = '1';  // 서버: 선택한 학과로 시간표 필터
+              document.getElementById('add-member-form').requestSubmit();
+            }
           }
+
+          // "+ 위원 추가"(교원)를 누르면, 사번을 직접 입력하지 않은 경우 먼저 디렉토리에서 동명이인을 확인한다.
+          // 동명이인이면 선택 팝업을 띄워 한 명을 고르게 하고, 그 사람의 학과 기준으로만 시간표를 반영한다.
+          document.getElementById('add-member-form').addEventListener('submit', async function (e) {
+            const type = document.querySelector('input[name="type"]:checked')?.value;
+            const name = document.getElementById('add-name').value.trim();
+            const sabun = document.getElementById('add-sabun').value.trim();
+            if (type !== 'faculty' || !name || sabun || _addVerified) return;  // 그 외엔 정상 제출
+            e.preventDefault();
+            const btn = this.querySelector('button.col-span-2');
+            const orig = btn.innerText; btn.disabled = true; btn.innerText = '⏳ 교원 확인 중...';
+            try {
+              const resp = await fetch('/admin/lookup-professor?name=' + encodeURIComponent(name) + '&_=' + Date.now(), { cache: 'no-store' });
+              const data = await resp.json();
+              if (!data.matches || data.matches.length === 0) {
+                _addVerified = true; this.requestSubmit();              // 디렉토리에 없음 → 그대로 추가
+              } else if (data.matches.length === 1) {
+                fillFromMatch(data.matches[0]);                          // 한 명 → 자동 채움 후 추가
+                _addVerified = true; this.requestSubmit();
+              } else {
+                _forceSubmitAfterSelect = true;                          // 동명이인 → 선택 팝업
+                showLookupResult(name, data);
+              }
+            } catch (err) {
+              _addVerified = true; this.requestSubmit();                 // 조회 실패해도 추가는 되게(이름 기반)
+            } finally {
+              btn.disabled = false; btn.innerText = orig;
+            }
+          });
 
           function closeLookupModal() {
             document.getElementById('lookup-backdrop').classList.add('hidden');
