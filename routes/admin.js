@@ -650,7 +650,9 @@ router.get('/committees/:id/faculty-timetable-preview', async (req, res) => {
       grp.get(code).titles.add(e.title);
     }
     const matchedMajors = [...grp.values()].map(g => ({
-      code: g.code, name: g.name, classCount: g.titles.size, sampleTitles: [...g.titles].slice(0, 4),
+      code: g.code, name: g.name, classCount: g.titles.size,
+      titles: [...g.titles].slice(0, 15),
+      gened: /교양/.test(g.name),   // 교양은 어느 교수인지 자동 구분 불가 → 프런트에서 별도 안내
     }));
     const cacheKey = uuidv4();
     cacheFacultyCrawl(cacheKey, { name, yearhakgi, cacheEntries });
