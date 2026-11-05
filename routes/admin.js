@@ -228,6 +228,8 @@ router.get('/insights', (req, res) => {
 router.get('/directory', (req, res) => {
   const total = db.prepare('SELECT COUNT(*) AS c FROM directory').get().c;
   const last = db.prepare('SELECT MAX(updated_at) AS t FROM directory').get().t;
+  const facultyCount = db.prepare("SELECT COUNT(*) AS c FROM directory WHERE gubun = '교원'").get().c;
+  const staffCount = db.prepare("SELECT COUNT(*) AS c FROM directory WHERE gubun = '직원'").get().c;
   // 동명이인(같은 이름 2명 이상) 수
   const dupeRow = db.prepare(`
     SELECT COUNT(*) AS c FROM (
@@ -238,7 +240,7 @@ router.get('/directory', (req, res) => {
   if (q) {
     const qn = directoryImport.normName(q);
     results = db.prepare(`
-      SELECT name, email, email_id, jikgup, org, dept, tel
+      SELECT name, email, email_id, gubun, jikgup, org, dept, tel
       FROM directory
       WHERE name_norm LIKE ? OR name LIKE ?
       ORDER BY name, dept LIMIT 50
@@ -247,6 +249,8 @@ router.get('/directory', (req, res) => {
   res.render('admin/directory', {
     total,
     last,
+    facultyCount,
+    staffCount,
     dupeCount: dupeRow ? dupeRow.c : 0,
     q,
     results,
@@ -272,14 +276,14 @@ router.post('/directory/upload', directoryUpload.single('directory_file'), (req,
   // 전체 교체(스냅샷). 기존 주소록을 비우고 새로 넣는다.
   try {
     db.exec('DELETE FROM directory');
-    const cols = ['name', 'name_norm', 'email', 'email_id', 'jikgup', 'org', 'dept', 'tel', 'mobile'];
+    const cols = ['name', 'name_norm', 'email', 'email_id', 'gubun', 'jikgup', 'org', 'dept', 'tel', 'mobile'];
     const CHUNK = 80; // 한 번에 80행씩 묶어 INSERT (Turso 왕복 최소화)
     const onePlaceholder = '(' + cols.map(() => '?').join(',') + ')';
     for (let i = 0; i < rows.length; i += CHUNK) {
       const slice = rows.slice(i, i + CHUNK);
       const placeholders = slice.map(() => onePlaceholder).join(',');
       const vals = [];
-      for (const r of slice) vals.push(r.name, r.name_norm, r.email, r.email_id, r.jikgup, r.org, r.dept, r.tel, r.mobile);
+      for (const r of slice) vals.push(r.name, r.name_norm, r.email, r.email_id, r.gubun, r.jikgup, r.org, r.dept, r.tel, r.mobile);
       db.prepare(`INSERT INTO directory (${cols.join(',')}) VALUES ${placeholders}`).run(...vals);
     }
   } catch (e) {

@@ -20,10 +20,14 @@
   <% } %>
 
   <!-- 현재 상태 -->
-  <div class="grid grid-cols-3 gap-3 mb-6">
+  <div class="grid grid-cols-4 gap-3 mb-6">
     <div class="bg-white border rounded-xl p-4 text-center">
       <div class="text-xs text-slate-500">저장된 인원</div>
       <div class="text-2xl font-bold text-slate-900 mt-1"><%= total.toLocaleString() %>명</div>
+    </div>
+    <div class="bg-white border rounded-xl p-4 text-center">
+      <div class="text-xs text-slate-500">교원 / 직원</div>
+      <div class="text-2xl font-bold text-slate-900 mt-1"><%= facultyCount %><span class="text-slate-400 text-lg"> / </span><%= staffCount %></div>
     </div>
     <div class="bg-white border rounded-xl p-4 text-center">
       <div class="text-xs text-slate-500">동명이인(이름 중복)</div>
@@ -73,6 +77,7 @@
             <thead>
               <tr class="text-left text-xs text-slate-500 border-b">
                 <th class="py-2 pr-3">이름</th>
+                <th class="py-2 pr-3">구분</th>
                 <th class="py-2 pr-3">소속(학과)</th>
                 <th class="py-2 pr-3">직급</th>
                 <th class="py-2 pr-3">이메일</th>
@@ -83,6 +88,11 @@
               <% results.forEach(function(r) { %>
               <tr class="border-b last:border-0">
                 <td class="py-2 pr-3 font-semibold text-slate-900 whitespace-nowrap"><%= r.name %></td>
+                <td class="py-2 pr-3 whitespace-nowrap">
+                  <% if (r.gubun === '교원') { %><span class="badge badge-blue">교원</span>
+                  <% } else if (r.gubun === '직원') { %><span class="badge badge-green">직원</span>
+                  <% } else { %><span class="text-slate-400">-</span><% } %>
+                </td>
                 <td class="py-2 pr-3 text-slate-700"><%= r.dept || '-' %></td>
                 <td class="py-2 pr-3 text-slate-600 whitespace-nowrap"><%= r.jikgup || '-' %></td>
                 <td class="py-2 pr-3 text-slate-600"><%= r.email || '-' %></td>

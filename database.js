@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS directory (
     name_norm TEXT,           -- 공백 제거한 이름(조회용)
     email TEXT,               -- 기본이메일
     email_id TEXT,            -- 로그인 ID(사번 유사)
+    gubun TEXT,               -- 교원/직원 구분
     jikgup TEXT,              -- 직급
     org TEXT,                 -- 조직 전체 경로
     dept TEXT,                -- 조직 마지막 칸(학과/트랙)
@@ -226,6 +227,7 @@ ensureColumn('meetings', 'uploaded_minutes_blob', 'BLOB');
 ensureColumn('meetings', 'final_pdf_path', 'TEXT');
 ensureColumn('meetings', 'final_pdf_generated_at', 'DATETIME');
 ensureColumn('meetings', 'group_token', 'TEXT'); // 공유 투표 링크용 짧은 코드
+ensureColumn('directory', 'gubun', 'TEXT'); // 교원/직원 구분(엑셀 '구분' 열)
 
 function migrateMemberTypes() {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='members'").get();

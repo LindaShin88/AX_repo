@@ -29,6 +29,7 @@ function classifyHeader(h) {
   if (/이름|성명/.test(t)) return 'name';
   if (/이메일|이-?메일|e-?mail/i.test(t) && !/보조/.test(t)) return 'email';   // 기본이메일(보조 제외)
   if (/^id\*?$/i.test(t) || /아이디/.test(t)) return 'email_id';
+  if (/^구분$/.test(t)) return 'gubun';                                         // 교원/직원
   if (/직급/.test(t)) return 'jikgup';
   if (/조직|소속|부서/.test(t) && !/장/.test(t)) return 'org';                 // "조직장(Y/N)" 제외
   if (/사내\s*전화|내선|전화번호/.test(t)) return 'tel';
@@ -80,6 +81,7 @@ function parseDirectory(input) {
       name_norm: normName(name),
       email: cols.email != null ? norm(r[cols.email]) : '',
       email_id: cols.email_id != null ? norm(r[cols.email_id]) : '',
+      gubun: cols.gubun != null ? norm(r[cols.gubun]) : '',
       jikgup: cols.jikgup != null ? norm(r[cols.jikgup]) : '',
       org,
       dept: lastDept(org),
