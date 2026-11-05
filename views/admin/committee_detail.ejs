@@ -343,28 +343,42 @@
             return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
           }
 
-          // "+ 위원 추가"(교원)를 누르면, 이름으로 시간표를 먼저 미리 긁어 학과가 몇 개 잡히는지 확인한다.
-          // 여러 학과가 잡히면(동명이인 가능) 학과 선택 팝업을 띄워, 고른 학과의 강의만 시간표에 반영한다.
+          // "+ 위원 추가"(교원)를 누르면:
+          //  1) 먼저 주소록으로 "교원 동명이인(같은 이름 교원이 서로 다른 소속에 2명+)"인지 빠르게 확인.
+          //     동명이인이 아니면(교원 1명뿐) 팝업 없이 바로 추가한다.
+          //  2) 동명이인이면(또는 주소록 미업로드) 이름으로 시간표를 미리 긁어 학과 선택 팝업을 띄우고,
+          //     고른 학과의 강의만 시간표에 반영한다.
           document.getElementById('add-member-form').addEventListener('submit', async function (e) {
             const type = document.querySelector('input[name="type"]:checked')?.value;
             const name = document.getElementById('add-name').value.trim();
             if (type !== 'faculty' || !name || _addVerified) return;  // 교원 외/빈 이름/이미 확인됨 → 정상 제출
             e.preventDefault();
             const btn = this.querySelector('button.col-span-2');
-            const orig = btn.innerText; btn.disabled = true; btn.innerText = '⏳ 시간표 확인 중...';
+            const orig = btn.innerText; btn.disabled = true; btn.innerText = '⏳ 확인 중...';
             try {
+              // 1) 교원 동명이인 여부(주소록 기준) — 빠름
+              let isDupe = false, dirEmpty = false;
+              try {
+                const chk = await (await fetch('/admin/directory/dupe-check?name=' + encodeURIComponent(name) + '&_=' + Date.now(), { cache: 'no-store' })).json();
+                isDupe = !!chk.isFacultyDupe; dirEmpty = !!chk.directoryEmpty;
+              } catch (_) {}
+              if (!isDupe && !dirEmpty) {                      // 교원 1명뿐 → 선택 불필요, 바로 추가
+                _addVerified = true; this.requestSubmit(); return;
+              }
+              // 2) 동명이인(또는 주소록 미업로드) → 시간표 미리보기 후 학과 선택 팝업
+              btn.innerText = '⏳ 시간표 확인 중...';
               const resp = await fetch('/admin/committees/<%= committee.id %>/faculty-timetable-preview?name=' + encodeURIComponent(name) + '&_=' + Date.now(), { cache: 'no-store' });
               const data = await resp.json();
               _crawlKey = data.cacheKey || '';
               document.getElementById('add-crawl-key').value = _crawlKey;
               const majors = data.matchedMajors || [];
               if (majors.length <= 1) {
-                _addVerified = true; this.requestSubmit();   // 학과 1개(또는 0) → 모호하지 않음, 그대로 추가
+                _addVerified = true; this.requestSubmit();    // 학과 1개(또는 0) → 모호하지 않음, 그대로 추가
               } else {
-                showDeptPicker(name, majors);                // 여러 학과 → 선택 팝업
+                showDeptPicker(name, majors);                 // 여러 학과 → 선택 팝업
               }
             } catch (err) {
-              _addVerified = true; this.requestSubmit();     // 조회 실패해도 추가는 되게(전체 반영)
+              _addVerified = true; this.requestSubmit();      // 조회 실패해도 추가는 되게(전체 반영)
             } finally {
               btn.disabled = false; btn.innerText = orig;
             }

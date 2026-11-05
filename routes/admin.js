@@ -293,6 +293,24 @@ router.post('/directory/upload', directoryUpload.single('directory_file'), (req,
   return res.redirect('/admin/directory?uploaded=' + rows.length);
 });
 
+// 이름이 "교원 동명이인"인지 빠르게 확인(시간표 선택 팝업을 띄울지 결정).
+// 규칙: 같은 이름의 교원이 서로 다른 소속(dept)으로 2곳 이상 → 동명이인 → 팝업.
+//       (소속이 같은 교원 중복 1건은 같은 사람 중복등록으로 보고 제외 — 예: 조용민)
+router.get('/directory/dupe-check', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.json({ isFacultyDupe: false, facultyDeptCount: 0, directoryEmpty: false });
+  const total = db.prepare('SELECT COUNT(*) AS c FROM directory').get().c;
+  if (!total) return res.json({ isFacultyDupe: false, facultyDeptCount: 0, directoryEmpty: true });
+  const qn = directoryImport.normName(name);
+  const row = db.prepare(`
+    SELECT COUNT(DISTINCT dept) AS c FROM directory
+    WHERE (name_norm = ? OR name = ?) AND gubun = '교원'
+  `).get(qn, name);
+  const facultyDeptCount = row ? row.c : 0;
+  res.json({ isFacultyDupe: facultyDeptCount >= 2, facultyDeptCount, directoryEmpty: false });
+});
+
 router.get('/committees/new', (req, res) => {
   res.render('admin/committee_new');
 });
