@@ -1,0 +1,101 @@
+<%- include('../partials/head', { pageTitle: '교직원 주소록' }) %>
+<%- include('../partials/admin_nav') %>
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+  <a href="/admin" class="text-sm text-slate-500 hover:text-slate-900">← 대시보드</a>
+  <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-1">👥 교직원 주소록</h1>
+  <p class="text-sm text-slate-500 mb-6">
+    교직원 명단 엑셀을 올려두면 시스템에 보관됩니다. (이후 위원 추가 시 이메일·소속 자동채움 / 동명이인 구분에 쓰입니다)
+  </p>
+
+  <% if (uploaded) { %>
+  <div class="mb-4 rounded-lg px-3 py-2 text-sm bg-emerald-50 text-emerald-900 border border-emerald-300">
+    ✅ <strong><%= uploaded %>명</strong> 저장 완료! 아래 검색창에서 이름으로 확인해 보세요.
+  </div>
+  <% } %>
+  <% if (error) { %>
+  <div class="mb-4 rounded-lg px-3 py-2 text-sm bg-red-50 text-red-900 border border-red-300">
+    ⚠️ <%= error %>
+  </div>
+  <% } %>
+
+  <!-- 현재 상태 -->
+  <div class="grid grid-cols-3 gap-3 mb-6">
+    <div class="bg-white border rounded-xl p-4 text-center">
+      <div class="text-xs text-slate-500">저장된 인원</div>
+      <div class="text-2xl font-bold text-slate-900 mt-1"><%= total.toLocaleString() %>명</div>
+    </div>
+    <div class="bg-white border rounded-xl p-4 text-center">
+      <div class="text-xs text-slate-500">동명이인(이름 중복)</div>
+      <div class="text-2xl font-bold text-slate-900 mt-1"><%= dupeCount %>건</div>
+    </div>
+    <div class="bg-white border rounded-xl p-4 text-center">
+      <div class="text-xs text-slate-500">마지막 업로드</div>
+      <div class="text-sm font-semibold text-slate-700 mt-2"><%= last ? last.slice(0,16).replace('T',' ') : '아직 없음' %></div>
+    </div>
+  </div>
+
+  <!-- 업로드 -->
+  <form method="POST" action="/admin/directory/upload" enctype="multipart/form-data"
+        class="bg-white border rounded-xl p-5 mb-6"
+        onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='올리는 중…';">
+    <label class="text-sm font-semibold text-slate-800">교직원 명단 엑셀(.xlsx) 올리기</label>
+    <p class="text-xs text-slate-500 mt-1 mb-3">
+      첫 줄에 <strong>이름 / 기본이메일 / 직급 / 조직 / 사내 전화번호</strong> 같은 제목이 있는 엑셀이면 됩니다.
+      올릴 때마다 <strong>전체가 새 파일로 교체</strong>됩니다.
+    </p>
+    <div class="flex items-center gap-3">
+      <input type="file" name="directory_file" accept=".xlsx,.xls"
+             required class="text-sm border rounded-lg px-3 py-2 w-full">
+      <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">
+        올리기
+      </button>
+    </div>
+  </form>
+
+  <!-- 확인(이름 검색) -->
+  <div class="bg-white border rounded-xl p-5">
+    <h2 class="text-sm font-semibold text-slate-800 mb-3">🔍 저장된 사람 확인 — 이름으로 검색</h2>
+    <form method="GET" action="/admin/directory" class="flex items-center gap-2 mb-4">
+      <input name="q" value="<%= q %>" placeholder="예: 이상혁"
+             class="border rounded-lg px-3 py-2 text-sm w-64">
+      <button class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold">검색</button>
+      <% if (q) { %><a href="/admin/directory" class="text-sm text-slate-500 hover:text-slate-900">초기화</a><% } %>
+    </form>
+
+    <% if (q) { %>
+      <% if (results.length === 0) { %>
+        <p class="text-sm text-slate-500">"<%= q %>" 와 일치하는 사람이 없습니다.</p>
+      <% } else { %>
+        <p class="text-xs text-slate-500 mb-2"><strong><%= results.length %></strong>명 찾음<% if (results.length > 1) { %> — 같은 이름은 <strong>소속</strong>으로 구분됩니다<% } %></p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs text-slate-500 border-b">
+                <th class="py-2 pr-3">이름</th>
+                <th class="py-2 pr-3">소속(학과)</th>
+                <th class="py-2 pr-3">직급</th>
+                <th class="py-2 pr-3">이메일</th>
+                <th class="py-2 pr-3">전화</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% results.forEach(function(r) { %>
+              <tr class="border-b last:border-0">
+                <td class="py-2 pr-3 font-semibold text-slate-900 whitespace-nowrap"><%= r.name %></td>
+                <td class="py-2 pr-3 text-slate-700"><%= r.dept || '-' %></td>
+                <td class="py-2 pr-3 text-slate-600 whitespace-nowrap"><%= r.jikgup || '-' %></td>
+                <td class="py-2 pr-3 text-slate-600"><%= r.email || '-' %></td>
+                <td class="py-2 pr-3 text-slate-600 whitespace-nowrap"><%= r.tel || '-' %></td>
+              </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    <% } else { %>
+      <p class="text-sm text-slate-400">이름을 입력하면 저장된 정보(소속·이메일·전화)를 보여줍니다.</p>
+    <% } %>
+  </div>
+</main>
+</body></html>

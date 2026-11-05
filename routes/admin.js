@@ -12,6 +12,13 @@ const hansungOc = require('../services/hansung_oc');
 const hansungDirectory = require('../services/hansung_directory');
 const mailer = require('../services/mailer');
 const minutesStore = require('../services/minutes_store');
+const directoryImport = require('../services/directory_import');
+
+// 교직원 주소록 엑셀 업로드용 (메모리 보관 — 파싱 후 DB에 넣으므로 디스크 저장 불필요)
+const directoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 // 알림 content 끝에 붙은 "[발송상태: ...]" 꼬리표를 파싱해, 화면에서 뱃지로 보여줄 수 있게
 // sendStatus 로 분리하고 본문에서는 그 꼬리표를 떼어낸다.
@@ -213,6 +220,73 @@ router.get('/insights', (req, res) => {
   if (req.session.operator?.role === 'super_admin') return res.redirect('/admin/users');
   const stats = getOperatorStats(req.session.operatorId);
   res.render('admin/insights', { stats });
+});
+
+// ── 교직원 주소록 ────────────────────────────────────────────────────────────
+// 엑셀로 교직원 명부를 올려 DB에 보관한다(현 단계: 저장 + 이름 검색 확인까지).
+// 이후 위원 추가 화면의 이메일·소속 자동채움 / 동명이인 구분에 활용 예정.
+router.get('/directory', (req, res) => {
+  const total = db.prepare('SELECT COUNT(*) AS c FROM directory').get().c;
+  const last = db.prepare('SELECT MAX(updated_at) AS t FROM directory').get().t;
+  // 동명이인(같은 이름 2명 이상) 수
+  const dupeRow = db.prepare(`
+    SELECT COUNT(*) AS c FROM (
+      SELECT name FROM directory GROUP BY name HAVING COUNT(*) > 1
+    )`).get();
+  const q = (req.query.q || '').trim();
+  let results = [];
+  if (q) {
+    const qn = directoryImport.normName(q);
+    results = db.prepare(`
+      SELECT name, email, email_id, jikgup, org, dept, tel
+      FROM directory
+      WHERE name_norm LIKE ? OR name LIKE ?
+      ORDER BY name, dept LIMIT 50
+    `).all('%' + qn + '%', '%' + q + '%');
+  }
+  res.render('admin/directory', {
+    total,
+    last,
+    dupeCount: dupeRow ? dupeRow.c : 0,
+    q,
+    results,
+    uploaded: req.query.uploaded ? parseInt(req.query.uploaded, 10) : null,
+    error: req.query.error || null,
+  });
+});
+
+router.post('/directory/upload', directoryUpload.single('directory_file'), (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    return res.redirect('/admin/directory?error=' + encodeURIComponent('파일이 선택되지 않았습니다.'));
+  }
+  let parsed;
+  try {
+    parsed = directoryImport.parseDirectory(req.file.buffer);
+  } catch (e) {
+    return res.redirect('/admin/directory?error=' + encodeURIComponent('엑셀을 읽지 못했습니다: ' + e.message));
+  }
+  const rows = parsed.rows;
+  if (!rows.length) {
+    return res.redirect('/admin/directory?error=' + encodeURIComponent('읽어들인 사람이 0명입니다. 파일을 확인하세요.'));
+  }
+  // 전체 교체(스냅샷). 기존 주소록을 비우고 새로 넣는다.
+  try {
+    db.exec('DELETE FROM directory');
+    const cols = ['name', 'name_norm', 'email', 'email_id', 'jikgup', 'org', 'dept', 'tel', 'mobile'];
+    const CHUNK = 80; // 한 번에 80행씩 묶어 INSERT (Turso 왕복 최소화)
+    const onePlaceholder = '(' + cols.map(() => '?').join(',') + ')';
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const slice = rows.slice(i, i + CHUNK);
+      const placeholders = slice.map(() => onePlaceholder).join(',');
+      const vals = [];
+      for (const r of slice) vals.push(r.name, r.name_norm, r.email, r.email_id, r.jikgup, r.org, r.dept, r.tel, r.mobile);
+      db.prepare(`INSERT INTO directory (${cols.join(',')}) VALUES ${placeholders}`).run(...vals);
+    }
+  } catch (e) {
+    console.error('[directory] 저장 실패:', e.message);
+    return res.redirect('/admin/directory?error=' + encodeURIComponent('저장 중 오류가 발생했습니다: ' + e.message));
+  }
+  return res.redirect('/admin/directory?uploaded=' + rows.length);
 });
 
 router.get('/committees/new', (req, res) => {

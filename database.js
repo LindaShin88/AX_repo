@@ -166,11 +166,29 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 교직원 주소록(엑셀 업로드). 위원 추가 시 이메일·소속 자동채움 / 동명이인(소속) 구분에 쓴다.
+-- 한 번 올리면 전체를 교체(덮어쓰기)하는 "스냅샷" 테이블.
+CREATE TABLE IF NOT EXISTS directory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    name_norm TEXT,           -- 공백 제거한 이름(조회용)
+    email TEXT,               -- 기본이메일
+    email_id TEXT,            -- 로그인 ID(사번 유사)
+    jikgup TEXT,              -- 직급
+    org TEXT,                 -- 조직 전체 경로
+    dept TEXT,                -- 조직 마지막 칸(학과/트랙)
+    tel TEXT,                 -- 사내 전화
+    mobile TEXT,              -- 휴대폰
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_members_committee ON members(committee_id);
 CREATE INDEX IF NOT EXISTS idx_meetings_committee ON meetings(committee_id);
 CREATE INDEX IF NOT EXISTS idx_slots_meeting ON meeting_slots(meeting_id);
 CREATE INDEX IF NOT EXISTS idx_responses_slot ON slot_responses(slot_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_token ON member_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_directory_name ON directory(name);
+CREATE INDEX IF NOT EXISTS idx_directory_name_norm ON directory(name_norm);
 `;
 
 db.exec(schema);
