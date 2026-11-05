@@ -345,6 +345,56 @@ router.get('/committees/:id', (req, res) => {
 
 const VALID_MEMBER_TYPES = new Set(['faculty', 'staff', 'student', 'external']);
 
+// 소속/학과명 느슨한 비교용(공백·가운뎃점·괄호·하이픈 제거).
+function looseDept(s) {
+  return String(s == null ? '' : s).replace(/[\s·.()[\]/|-]/g, '');
+}
+
+// 업로드한 교직원 주소록(directory)에서 이름으로 사람을 찾는다.
+//  - 0명: null (자동채움 없음)
+//  - 1명: 그 사람
+//  - 2명+(동명이인): 교원이면 선택된 학과명과 소속(dept)이 비슷한 사람을 고르고,
+//                    확신이 안 서면 null(잘못된 이메일 자동입력 방지 → 수동 입력)
+function pickDirectoryRow(name, keptMajorNames) {
+  const rows = db.prepare(`
+    SELECT name, email, gubun, jikgup, org, dept, tel
+    FROM directory WHERE name_norm = ? OR name = ?
+  `).all(directoryImport.normName(name), name);
+  if (rows.length === 0) return null;
+  if (rows.length === 1) return rows[0];
+  if (keptMajorNames && keptMajorNames.length) {
+    const keep = keptMajorNames.map(looseDept).filter(Boolean);
+    const hit = rows.find(r => {
+      const d = looseDept(r.dept);
+      return d && keep.some(k => k.includes(d) || d.includes(k));
+    });
+    if (hit) return hit;
+  }
+  return null; // 동명이인인데 어느 쪽인지 확신 불가 → 자동채움 생략
+}
+
+// 주소록 정보로 멤버의 빈 칸(이메일/직위·직책/소속/전화)만 채운다.
+// 규칙: 이메일=기본이메일(C), 직위·직책=직급(F), 소속=조직 마지막칸(G), 전화=사내 전화번호.
+function autofillMemberFromDirectory(memberId, name, current, keptMajorNames) {
+  try {
+    const row = pickDirectoryRow(name, keptMajorNames);
+    if (!row) return null;
+    const sets = [], vals = [];
+    if (!current.email && row.email) { sets.push('email = ?'); vals.push(row.email); }
+    if (!current.role && row.jikgup) { sets.push('role = ?'); vals.push(row.jikgup); }
+    if (!current.affiliation && row.dept) { sets.push('affiliation = ?'); vals.push(row.dept); }
+    if (!current.phone && row.tel) { sets.push('phone = ?'); vals.push(row.tel); }
+    if (sets.length) {
+      vals.push(memberId);
+      db.prepare(`UPDATE members SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    }
+    return row;
+  } catch (e) {
+    console.error('[directory autofill] 실패:', e.message);
+    return null;
+  }
+}
+
 router.post('/committees/:id/members', async (req, res) => {
   const committee = db.prepare('SELECT id FROM committees WHERE id = ? AND operator_id = ?')
     .get(req.params.id, req.session.operatorId);
@@ -376,6 +426,7 @@ router.post('/committees/:id/members', async (req, res) => {
   `).run(committee.id, name, email, phone, type, sabun, role, affiliation);
   const memberId = info.lastInsertRowid;
 
+  let facultyKeptMajorNames = null; // 교원 동명이인에서 운영자가 고른 학과명(주소록 매칭용)
   if (type === 'faculty') {
     const crawlKey = String(req.body._crawl_key || '');
     const keepMajors = String(req.body._keep_majors || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -408,6 +459,7 @@ router.post('/committees/:id/members', async (req, res) => {
         majorMap.get(key).set.add(`${e.title}|${e.bunban || ''}`);
       }
       const matchedMajors = [...majorMap.values()].map(v => ({ code: v.code, name: v.name, classCount: v.set.size }));
+      facultyKeptMajorNames = matchedMajors.map(m => m.name).filter(Boolean);
       const classCount = new Set(cacheEntries.map(e => `${e.majorCode || ''}|${e.title}|${e.bunban || ''}`)).size;
       const meta = {
         yearhakgi,
@@ -439,6 +491,10 @@ router.post('/committees/:id/members', async (req, res) => {
       if (crawlKey) facultyCrawlCache.delete(crawlKey);
     }
   }
+
+  // 교직원 주소록에서 이메일·직급·소속·전화 자동 채움(비어있는 칸만).
+  // 교원은 위에서 고른 학과명으로 동명이인을 가려 매칭한다.
+  autofillMemberFromDirectory(memberId, name, { email, role, affiliation, phone }, facultyKeptMajorNames);
 
   const newMember = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
   const openMeetings = db.prepare(`
@@ -693,13 +749,32 @@ router.post('/committees/:id/timetable-sync', async (req, res) => {
   res.redirect(`/admin/committees/${committee.id}?sync=done`);
 });
 
-router.get('/lookup-professor', async (req, res) => {
+// 이름으로 교직원 주소록(업로드한 directory)을 조회해 돌려준다.
+// 이메일=기본이메일(C), 소속=조직 마지막칸(G), 직위·직책=직급(F).
+router.get('/lookup-professor', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const name = String(req.query.name || '').trim();
   if (!name) return res.json({ matches: [], reason: 'empty-name' });
   try {
-    const result = await hansungDirectory.lookupProfessor(name);
-    res.json(result);
+    const total = db.prepare('SELECT COUNT(*) AS c FROM directory').get().c;
+    if (!total) return res.json({ matches: [], reason: 'directory-empty' });
+    const rows = db.prepare(`
+      SELECT name, email, email_id, gubun, jikgup, org, dept, tel
+      FROM directory WHERE name_norm = ? OR name = ?
+      ORDER BY gubun, dept LIMIT 20
+    `).all(directoryImport.normName(name), name);
+    const matches = rows.map(r => ({
+      name: r.name,
+      email: r.email || '',
+      sabun: '',                              // 엑셀에 사번 열 없음
+      affiliations: r.dept ? [r.dept] : [],   // 소속 = 조직 마지막칸
+      phone: r.tel || '',
+      position: r.jikgup || '',               // 직위/직책 = 직급
+      major: r.dept || '',
+      gubun: r.gubun || '',
+      org: r.org || '',
+    }));
+    res.json({ matches, source: 'directory' });
   } catch (e) {
     res.json({ matches: [], reason: 'error', error: e.message });
   }
