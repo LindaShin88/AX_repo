@@ -14,7 +14,6 @@
           <a href="/admin/notifications" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/notifications') ? 'bg-slate-100 font-semibold' : '' %>">알림 로그</a>
         <% } else { %>
           <a href="/admin" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath === '/' ? 'bg-slate-100 font-semibold' : '' %>">대시보드</a>
-          <a href="/admin/directory" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/directory') ? 'bg-slate-100 font-semibold' : '' %>">👥 교직원 주소록</a>
           <a href="/admin/insights" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/insights') ? 'bg-slate-100 font-semibold' : '' %>">📊 효과 분석</a>
           <a href="/admin/notifications" class="px-3 py-1.5 rounded hover:bg-slate-100 <%= currentPath?.startsWith('/notifications') ? 'bg-slate-100 font-semibold' : '' %>">알림 로그</a>
         <% } %>

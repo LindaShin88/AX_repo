@@ -225,7 +225,7 @@ router.get('/insights', (req, res) => {
 // ── 교직원 주소록 ────────────────────────────────────────────────────────────
 // 엑셀로 교직원 명부를 올려 DB에 보관한다(현 단계: 저장 + 이름 검색 확인까지).
 // 이후 위원 추가 화면의 이메일·소속 자동채움 / 동명이인 구분에 활용 예정.
-router.get('/directory', (req, res) => {
+router.get('/directory', requireSuperAdmin, (req, res) => {
   const total = db.prepare('SELECT COUNT(*) AS c FROM directory').get().c;
   const last = db.prepare('SELECT MAX(updated_at) AS t FROM directory').get().t;
   const facultyCount = db.prepare("SELECT COUNT(*) AS c FROM directory WHERE gubun = '교원'").get().c;
@@ -259,7 +259,7 @@ router.get('/directory', (req, res) => {
   });
 });
 
-router.post('/directory/upload', directoryUpload.single('directory_file'), (req, res) => {
+router.post('/directory/upload', requireSuperAdmin, directoryUpload.single('directory_file'), (req, res) => {
   if (!req.file || !req.file.buffer) {
     return res.redirect('/admin/directory?error=' + encodeURIComponent('파일이 선택되지 않았습니다.'));
   }
