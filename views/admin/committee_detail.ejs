@@ -166,22 +166,17 @@
       <% } %>
 
       <div class="mt-4 border-t pt-4">
-        <div class="text-sm font-semibold text-slate-700 mb-1">+ 위원 추가</div>
-        <div id="lookup-hint" class="text-xs text-slate-500 mb-3">교원은 <strong>이름만 입력</strong>하고 <strong>Enter</strong> 또는 아래 <strong>+ 위원 추가</strong> 버튼을 누르면 됩니다. 추가 시 한성대 <strong>2학기 시간표가 자동 연결</strong>돼요. (이메일·소속·사번은 선택)</div>
+        <div class="text-sm font-semibold text-slate-700 mb-3">+ 위원 추가</div>
         <% if (typeof memberAutofill !== 'undefined' && memberAutofill) { %>
         <div class="mb-3 rounded-lg px-3 py-2 text-sm bg-emerald-50 text-emerald-900 border border-emerald-300">
           ✅ <strong><%= memberAutofill.name %></strong> 위원 추가 — 주소록에서 <strong><%= memberAutofill.filled.join(' · ') %></strong> 자동 입력됨<% if (memberAutofill.email) { %> <span class="text-emerald-700">(<%= memberAutofill.email %><%= memberAutofill.dept ? ' · ' + memberAutofill.dept : '' %>)</span><% } %>
         </div>
         <% } %>
-        <% if (typeof directoryCount !== 'undefined') { %>
-          <% if (directoryCount > 0) { %>
-          <div class="mb-3 text-xs text-slate-500">📇 교직원 주소록 <strong class="text-slate-700"><%= directoryCount.toLocaleString() %>명</strong> 연결됨 — 이름만 넣으면 <strong>이메일·소속·직급</strong>이 자동으로 채워져요.</div>
-          <% } else { %>
+        <% if (typeof directoryCount !== 'undefined' && directoryCount === 0) { %>
           <div class="mb-3 rounded-lg px-3 py-2 text-xs bg-amber-50 text-amber-900 border border-amber-300">
             ⚠️ 교직원 주소록이 <strong>비어 있어요</strong>. 이메일·소속·직급 자동채움을 쓰려면 먼저
             <a href="/admin/directory" class="underline font-semibold">교직원 주소록</a>에서 엑셀을 올려주세요.
           </div>
-          <% } %>
         <% } %>
         <form id="add-member-form" method="POST" action="/admin/committees/<%= committee.id %>/members" class="grid grid-cols-2 gap-3" autocomplete="off">
           <div class="col-span-2 grid grid-cols-4 gap-2">
