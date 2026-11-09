@@ -428,6 +428,7 @@ restoreDraft();
 // ── 발송 메시지 미리보기 ───────────────────────────────────────────
 const PREVIEW_COMMITTEE = <%- JSON.stringify(committee.name) %>;
 const PREVIEW_BASE = <%- JSON.stringify(previewBaseUrl || '') %>;
+const MAIL_FOOTER = <%- JSON.stringify(typeof mailFooterPreview !== 'undefined' ? mailFooterPreview : '') %>;
 
 function previewChannels() {
   return [...document.querySelectorAll('input[name="notify_channels"]:checked')].map(c => c.value);
@@ -446,7 +447,7 @@ function buildPreview() {
     emailWrap.style.display = '';
     document.getElementById('prev-email-subject').textContent = `[${PREVIEW_COMMITTEE}] ${title} 가능일정 회신 요청`;
     document.getElementById('prev-email-body').textContent =
-      `○○○ 위원님, 안녕하세요.\n"${title}" 회의 일정 조율을 위해 가능 일정을 확인 부탁드립니다.\n\n별도 로그인 없이 아래 링크에서 1분 안에 응답 가능합니다.\n${sampleLink}\n\n감사합니다.`;
+      `○○○ 위원님, 안녕하세요.\n"${title}" 회의 일정 조율을 위해 가능 일정을 확인 부탁드립니다.\n\n별도 로그인 없이 아래 링크에서 1분 안에 응답 가능합니다.\n${sampleLink}\n\n감사합니다.\n\n────────────────────\n${MAIL_FOOTER}`;
   } else { emailWrap.style.display = 'none'; }
 
   const smsWrap = document.getElementById('preview-sms-wrap');

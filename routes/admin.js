@@ -914,7 +914,13 @@ router.get('/committees/:id/meetings/new', async (req, res) => {
   if (!committee) return res.status(404).send('Not found');
   const members = db.prepare('SELECT * FROM members WHERE committee_id = ?').all(committee.id);
   const previewBaseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
-  res.render('admin/meeting_new', { committee, members, defaults: defaultConstraints(), previewBaseUrl });
+  // 미리보기용 하단 안내 문구(실제 발송과 동일하게): 담당자=현재 운영자 이름(소속)
+  const op = req.session.operator || {};
+  const mgr = (op.name ? op.name + (op.department ? '(' + op.department + ')' : '') : '').trim();
+  const mailFooterPreview = op.email
+    ? `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다. 문의·답변은 '답장'을 누르시면 담당자 ${mgr} 에게 자동으로 전달됩니다.`
+    : `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.`;
+  res.render('admin/meeting_new', { committee, members, defaults: defaultConstraints(), previewBaseUrl, mailFooterPreview });
 });
 
 router.post('/committees/:id/meetings', async (req, res) => {

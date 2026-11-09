@@ -72,9 +72,25 @@ function getSenderInfoForMeeting(meeting) {
         FROM committees c JOIN operators o ON o.id = c.operator_id
        WHERE c.id = ?
     `).get(meeting.committee_id);
-    if (!row) return { name: null, replyTo: null };
-    return { name: row.n || defaultSenderName(row.opname, row.dept), replyTo: row.email || null };
-  } catch (e) { return { name: null, replyTo: null }; }
+    if (!row) return { name: null, replyTo: null, managerName: null };
+    const manager = defaultSenderName(row.opname, row.dept); // 담당자 표시용(이름(소속))
+    return { name: row.n || manager, replyTo: row.email || null, managerName: manager };
+  } catch (e) { return { name: null, replyTo: null, managerName: null }; }
+}
+
+// 메일 하단 안내 문구. 받는 사람이 공용 발송주소를 담당자 개인주소로 오해하지 않도록,
+// 시스템 발송임을 밝히고 답장이 담당자에게 간다는 점을 알린다.
+function buildMailFooter(sender) {
+  const who = sender && sender.managerName ? sender.managerName : null;
+  let line;
+  if (sender && sender.replyTo) {
+    line = who
+      ? `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다. 문의·답변은 '답장'을 누르시면 담당자 ${who} 에게 자동으로 전달됩니다.`
+      : `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다. 문의·답변은 '답장'을 누르시면 담당자에게 자동으로 전달됩니다.`;
+  } else {
+    line = `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.`;
+  }
+  return `\n\n────────────────────\n${line}`;
 }
 
 async function deliverEmail(member, subject, content, sender = null) {
@@ -83,7 +99,7 @@ async function deliverEmail(member, subject, content, sender = null) {
   return await mailer.sendMail({
     to: member.email,
     subject,
-    text: content,
+    text: content + buildMailFooter(sender),  // 하단 안내 문구는 발송 메일에만(로그엔 본문만)
     fromName: sender ? sender.name : null,
     replyTo: sender ? sender.replyTo : null,
   });
