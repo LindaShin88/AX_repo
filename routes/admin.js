@@ -918,7 +918,7 @@ router.get('/committees/:id/meetings/new', async (req, res) => {
   const op = req.session.operator || {};
   const mgr = (op.name ? op.name + (op.department ? '(' + op.department + ')' : '') : '').trim();
   const mailFooterPreview = op.email
-    ? `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다. 문의·답변은 '답장'을 누르시면 담당자 ${mgr} 에게 자동으로 전달됩니다.`
+    ? `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자 ${mgr} 에게 자동으로 전달됩니다.`
     : `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.`;
   res.render('admin/meeting_new', { committee, members, defaults: defaultConstraints(), previewBaseUrl, mailFooterPreview });
 });
@@ -1242,7 +1242,7 @@ router.post('/meetings/:id/remind', async (req, res) => {
         if (ch.channel === 'sms') {
           notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'sms', subject, content: smsBody, status: 'SMS는 운영자가 직접 발송' });
         } else if (m.email && mailer.isSmtpConfigured()) {
-          const r = await mailer.sendMail({ to: m.email, subject, text: emailBody });
+          const r = await notify.sendCustomEmail(meeting, m, subject, emailBody);
           const status = r.ok ? `발송 OK (${r.messageId || ''})` : `실패: ${r.reason}`;
           notify.logNotification({ meetingId: meeting.id, memberId: m.id, type: 'reminder', channel: 'email', subject, content: emailBody, status });
         } else {

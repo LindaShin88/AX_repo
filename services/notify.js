@@ -85,12 +85,19 @@ function buildMailFooter(sender) {
   let line;
   if (sender && sender.replyTo) {
     line = who
-      ? `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다. 문의·답변은 '답장'을 누르시면 담당자 ${who} 에게 자동으로 전달됩니다.`
-      : `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다. 문의·답변은 '답장'을 누르시면 담당자에게 자동으로 전달됩니다.`;
+      ? `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자 ${who} 에게 자동으로 전달됩니다.`
+      : `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자에게 자동으로 전달됩니다.`;
   } else {
     line = `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.`;
   }
   return `\n\n────────────────────\n${line}`;
+}
+
+// 운영자가 직접 작성한 메일(커스텀 리마인드 등)을 보낼 때도 보낸이름·답장주소·하단문구가
+// 똑같이 들어가도록 하는 공통 발송 함수.
+async function sendCustomEmail(meeting, member, subject, content) {
+  const sender = getSenderInfoForMeeting(meeting);
+  return await deliverEmail(member, subject, content, sender);
 }
 
 async function deliverEmail(member, subject, content, sender = null) {
@@ -395,4 +402,5 @@ module.exports = {
   logArsCall,
   formatKoreanDateTime,
   buildConfirmedAnnouncement,
+  sendCustomEmail,
 };
