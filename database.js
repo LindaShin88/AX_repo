@@ -214,6 +214,8 @@ ensureColumn('operators', 'approved_by', 'INTEGER');
 ensureColumn('operators', 'approved_at', 'DATETIME');
 ensureColumn('operators', 'rejection_reason', 'TEXT');
 ensureColumn('operators', 'mail_sender_name', 'TEXT');
+ensureColumn('operators', 'privacy_consent_at', 'DATETIME');      // 개인정보 수집·이용 동의 일시
+ensureColumn('operators', 'privacy_consent_version', 'TEXT');     // 동의한 방침 버전
 
 ensureColumn('members', 'timetable_meta', 'TEXT');
 

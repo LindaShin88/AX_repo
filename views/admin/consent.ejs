@@ -1,0 +1,31 @@
+<%- include('../partials/head', { pageTitle: '개인정보 수집·이용 동의' }) %>
+<main class="max-w-xl mx-auto px-6 py-12">
+  <div class="bg-white border rounded-2xl shadow-sm p-7">
+    <h1 class="text-xl font-bold text-slate-900 mb-1">개인정보 수집·이용 동의</h1>
+    <p class="text-sm text-slate-500 mb-5">서비스를 계속 이용하시려면 아래 내용에 동의해 주세요.</p>
+
+    <div class="bg-slate-50 border rounded-xl p-4 text-sm text-slate-700 space-y-2 mb-5">
+      <div><span class="text-slate-500">수집 항목</span> — 아이디, 성명, 소속(부서), 이메일 <span class="text-slate-400">(비밀번호는 암호화 저장)</span></div>
+      <div><span class="text-slate-500">수집·이용 목적</span> — 운영자 계정 관리, 위원회 운영·회의 일정 조율·알림 발송</div>
+      <div><span class="text-slate-500">보유 기간</span> — 회원 탈퇴 또는 업무 종료 시까지 (이후 지체 없이 파기)</div>
+      <p class="text-xs text-slate-500 pt-1">※ 동의를 거부할 권리가 있으나, 거부 시 서비스 이용이 제한됩니다. 자세한 내용은
+        <a href="/admin/privacy" target="_blank" rel="noopener" class="text-indigo-600 underline">개인정보처리방침</a> 전문을 확인하세요.</p>
+    </div>
+
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="mb-3 rounded-lg px-3 py-2 text-sm bg-red-50 text-red-900 border border-red-300"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/admin/consent">
+      <label class="flex items-start gap-2 text-sm text-slate-800 mb-4 cursor-pointer">
+        <input type="checkbox" name="agree_privacy" value="1" required class="mt-0.5">
+        <span>[필수] 위 개인정보 수집·이용에 동의합니다.</span>
+      </label>
+      <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold">동의하고 계속</button>
+    </form>
+    <form method="POST" action="/admin/logout" class="mt-2">
+      <button class="w-full border rounded-lg py-2 text-sm text-slate-600 hover:bg-slate-50">로그아웃</button>
+    </form>
+  </div>
+</main>
+</body></html>

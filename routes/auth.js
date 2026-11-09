@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const db = require('../database');
+const { PRIVACY_POLICY_VERSION } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -39,8 +40,33 @@ router.post('/login', async (req, res) => {
     id: op.id, username: op.username, name: op.name,
     department: op.department, email: op.email, role: op.role, status: op.status,
     mail_sender_name: op.mail_sender_name || null,
+    privacy_consent_version: op.privacy_consent_version || null,
   };
+  // 개인정보 동의 안 한(또는 구버전) 운영자는 동의 화면으로. 동의하면 원래 가려던 곳으로.
+  if (op.privacy_consent_version !== PRIVACY_POLICY_VERSION) return res.redirect('/admin/consent');
   res.redirect(op.role === 'super_admin' ? '/admin/users' : '/admin');
+});
+
+// 개인정보처리방침 전문 (로그인 없이도 열람 가능)
+router.get('/privacy', (req, res) => {
+  res.render('admin/privacy');
+});
+
+// 기존 운영자 동의 게이트
+router.get('/consent', (req, res) => {
+  if (!req.session.operatorId) return res.redirect('/admin/login');
+  res.render('admin/consent', { error: null });
+});
+
+router.post('/consent', (req, res) => {
+  if (!req.session.operatorId) return res.redirect('/admin/login');
+  if (!req.body.agree_privacy) {
+    return res.render('admin/consent', { error: '계속하려면 동의가 필요합니다.' });
+  }
+  db.prepare('UPDATE operators SET privacy_consent_at = CURRENT_TIMESTAMP, privacy_consent_version = ? WHERE id = ?')
+    .run(PRIVACY_POLICY_VERSION, req.session.operatorId);
+  if (req.session.operator) req.session.operator.privacy_consent_version = PRIVACY_POLICY_VERSION;
+  res.redirect(req.session.operator?.role === 'super_admin' ? '/admin/users' : '/admin');
 });
 
 router.post('/logout', (req, res) => {
@@ -61,15 +87,16 @@ router.post('/register', async (req, res) => {
   if (password.length < 8) return fail('비밀번호는 8자 이상이어야 합니다.');
   if (password !== password_confirm) return fail('비밀번호 확인이 일치하지 않습니다.');
   if (!emailDomainOk(email)) return fail(`이메일은 ${ALLOWED_DOMAINS.map(d => '@' + d).join(', ')} 도메인만 가입 가능합니다.`);
+  if (!req.body.agree_privacy) return fail('개인정보 수집·이용 동의가 필요합니다.');
 
   const exists = db.prepare('SELECT 1 FROM operators WHERE username = ? OR email = ?').get(username, email);
   if (exists) return fail('이미 사용중인 아이디 또는 이메일입니다.');
 
   const hash = await bcrypt.hash(password, 10);
   db.prepare(`
-    INSERT INTO operators (username, password_hash, name, department, email, role, status)
-    VALUES (?, ?, ?, ?, ?, 'operator', 'pending')
-  `).run(username, hash, name, department || null, email);
+    INSERT INTO operators (username, password_hash, name, department, email, role, status, privacy_consent_at, privacy_consent_version)
+    VALUES (?, ?, ?, ?, ?, 'operator', 'pending', CURRENT_TIMESTAMP, ?)
+  `).run(username, hash, name, department || null, email, PRIVACY_POLICY_VERSION);
 
   res.redirect('/admin/login?info=registered');
 });
