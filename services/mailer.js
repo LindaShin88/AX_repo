@@ -88,10 +88,16 @@ function textToHtml(text) {
     .replace(/\n/g, '<br>');
 }
 
+// 문자열에서 "순수 이메일 주소"만 뽑는다.
+// "위원회 공장 <committee_factory@hansung.ac.kr>" 처럼 이름이 붙어 있어도,
+// 괄호가 없어도, 실제 이메일 패턴만 반환한다(From 헤더가 엉키지 않게).
 function extractEmailAddress(s) {
   if (!s) return '';
-  const m = String(s).match(/<([^>]+)>/);
-  return (m ? m[1] : String(s)).trim();
+  const str = String(s);
+  const ang = str.match(/<([^>]+)>/);
+  const candidate = ang ? ang[1] : str;
+  const email = candidate.match(/[^\s<>"]+@[^\s<>"]+\.[^\s<>"]+/);
+  return email ? email[0].trim() : '';
 }
 
 async function sendMail({ to, subject, text, html, fromName, replyTo }) {
@@ -102,7 +108,7 @@ async function sendMail({ to, subject, text, html, fromName, replyTo }) {
     // 발신 주소는 인증된 공용 계정으로 고정하되, fromName이 있으면 표시 이름만 바꾼다.
     let fromHeader = cfg.from || cfg.user;
     if (fromName) {
-      const addr = extractEmailAddress(cfg.from || cfg.user) || cfg.user;
+      const addr = extractEmailAddress(cfg.from) || extractEmailAddress(cfg.user) || cfg.user;
       const safeName = String(fromName).replace(/["\r\n]/g, '').trim();
       if (safeName && addr) fromHeader = `"${safeName}" <${addr}>`;
     }

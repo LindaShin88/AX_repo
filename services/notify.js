@@ -53,18 +53,19 @@ function logNotification({ meetingId, memberId = null, type, channel = 'email', 
 }
 
 // 회의를 만든 운영자의 발신 정보:
-//  - name:    메일에 보이는 "보낸사람 이름"(운영자가 설정한 발신자 이름, 없으면 운영자 이름)
+//  - name:    메일에 보이는 "보낸사람 이름". 운영자가 발신자 이름을 직접 설정했을 때만 사용.
+//             (미설정이면 null → 시스템 기본 발신자 이름 "위원회 공장" 그대로 사용)
 //  - replyTo: "답장 받을 주소"(운영자 가입 이메일). 위원이 답장하면 이 주소로 감(없으면 null=공용계정).
 function getSenderInfoForMeeting(meeting) {
   if (!meeting || !meeting.committee_id) return { name: null, replyTo: null };
   try {
     const row = db.prepare(`
-      SELECT o.mail_sender_name AS n, o.name AS opname, o.email AS email
+      SELECT o.mail_sender_name AS n, o.email AS email
         FROM committees c JOIN operators o ON o.id = c.operator_id
        WHERE c.id = ?
     `).get(meeting.committee_id);
     if (!row) return { name: null, replyTo: null };
-    return { name: row.n || row.opname || null, replyTo: row.email || null };
+    return { name: row.n || null, replyTo: row.email || null };
   } catch (e) { return { name: null, replyTo: null }; }
 }
 
