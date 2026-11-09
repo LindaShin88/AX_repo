@@ -343,6 +343,10 @@ router.get('/committees/:id', (req, res) => {
   const autoCrawl = req.session.lastFacultyAutoCrawl && req.session.lastFacultyAutoCrawl.committeeId === committee.id
     ? req.session.lastFacultyAutoCrawl : null;
   if (autoCrawl) delete req.session.lastFacultyAutoCrawl;
+  const directoryCount = db.prepare('SELECT COUNT(*) AS c FROM directory').get().c;
+  const memberAutofill = req.session.lastMemberAutofill && req.session.lastMemberAutofill.committeeId === committee.id
+    ? req.session.lastMemberAutofill : null;
+  if (memberAutofill) delete req.session.lastMemberAutofill;
   const memberAddIssue = req.session.lastMemberAddIssue && req.session.lastMemberAddIssue.committeeId === committee.id
     ? req.session.lastMemberAddIssue : null;
   if (memberAddIssue) delete req.session.lastMemberAddIssue;
@@ -353,6 +357,8 @@ router.get('/committees/:id', (req, res) => {
     syncResult,
     autoCrawl,
     memberAddIssue,
+    directoryCount,
+    memberAutofill,
     errFlag: req.query.err || null,
     dupName: req.query.dupname || null,
     committeeUpdated: req.query['committee-updated'] === '1',
@@ -512,7 +518,17 @@ router.post('/committees/:id/members', async (req, res) => {
 
   // 교직원 주소록에서 이메일·직급·소속·전화 자동 채움(비어있는 칸만).
   // 교원은 위에서 고른 학과명으로 동명이인을 가려 매칭한다.
-  autofillMemberFromDirectory(memberId, name, { email, role, affiliation, phone }, facultyKeptMajorNames);
+  const autofillRow = autofillMemberFromDirectory(memberId, name, { email, role, affiliation, phone }, facultyKeptMajorNames);
+  if (autofillRow) {
+    const filled = [];
+    if (!email && autofillRow.email) filled.push('이메일');
+    if (!role && autofillRow.jikgup) filled.push('직급');
+    if (!affiliation && autofillRow.dept) filled.push('소속');
+    if (!phone && autofillRow.tel) filled.push('전화');
+    if (filled.length) {
+      req.session.lastMemberAutofill = { committeeId: committee.id, memberId, name, filled, dept: autofillRow.dept || '', email: autofillRow.email || '' };
+    }
+  }
 
   const newMember = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
   const openMeetings = db.prepare(`
