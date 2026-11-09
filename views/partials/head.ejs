@@ -6,17 +6,10 @@
 <link rel="icon" type="image/png" href="/img/hansung-logo.png">
 <link rel="apple-touch-icon" href="/img/hansung-logo.png">
 <title><%= typeof pageTitle !== 'undefined' ? pageTitle : '위원회 자동화 플랫폼' %></title>
-<script src="https://cdn.tailwindcss.com"></script>
+<!-- Tailwind를 미리 컴파일한 정적 CSS. 예전엔 cdn.tailwindcss.com(Play CDN)이 매 페이지에서
+     CSS를 실시간 생성해 느렸음. 템플릿에 새 클래스를 추가하면 `npm run build:css`로 다시 생성할 것. -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet">
-<style>
-  body { font-family: 'Pretendard', -apple-system, sans-serif; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
-  .badge-green { background: #d1fae5; color: #065f46; }
-  .badge-red { background: #fee2e2; color: #991b1b; }
-  .badge-amber { background: #fef3c7; color: #92400e; }
-  .badge-blue { background: #dbeafe; color: #1e40af; }
-  .badge-gray { background: #e5e7eb; color: #374151; }
-  .badge-violet { background: #ede9fe; color: #5b21b6; }
-</style>
+<link rel="stylesheet" href="/css/tailwind.css">
 </head>
 <body class="bg-slate-50 text-slate-800">
