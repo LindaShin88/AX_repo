@@ -52,27 +52,31 @@ function logNotification({ meetingId, memberId = null, type, channel = 'email', 
   return stmt.run(meetingId, memberId, type, channel, subject, decorated).lastInsertRowid;
 }
 
-// 회의를 만든 운영자가 프로필에 설정한 "발신자 이름"을 찾는다(없으면 null → 시스템 기본값).
-function getSenderNameForMeeting(meeting) {
-  if (!meeting || !meeting.committee_id) return null;
+// 회의를 만든 운영자의 발신 정보:
+//  - name:    메일에 보이는 "보낸사람 이름"(운영자가 설정한 발신자 이름, 없으면 운영자 이름)
+//  - replyTo: "답장 받을 주소"(운영자 가입 이메일). 위원이 답장하면 이 주소로 감(없으면 null=공용계정).
+function getSenderInfoForMeeting(meeting) {
+  if (!meeting || !meeting.committee_id) return { name: null, replyTo: null };
   try {
     const row = db.prepare(`
-      SELECT o.mail_sender_name AS n
+      SELECT o.mail_sender_name AS n, o.name AS opname, o.email AS email
         FROM committees c JOIN operators o ON o.id = c.operator_id
        WHERE c.id = ?
     `).get(meeting.committee_id);
-    return row && row.n ? row.n : null;
-  } catch (e) { return null; }
+    if (!row) return { name: null, replyTo: null };
+    return { name: row.n || row.opname || null, replyTo: row.email || null };
+  } catch (e) { return { name: null, replyTo: null }; }
 }
 
-async function deliverEmail(member, subject, content, fromName = null) {
+async function deliverEmail(member, subject, content, sender = null) {
   if (!member.email) return { ok: false, reason: 'no-email' };
   if (!mailer.isSmtpConfigured()) return { ok: false, reason: 'smtp-not-configured' };
   return await mailer.sendMail({
     to: member.email,
     subject,
     text: content,
-    fromName,
+    fromName: sender ? sender.name : null,
+    replyTo: sender ? sender.replyTo : null,
   });
 }
 
@@ -96,7 +100,7 @@ async function sendAvailabilityRequest(meeting, member, token, baseUrl) {
   const link = `${baseUrl}/avail/${token}`;
   // SMS는 단체문자로 한 번에 보내므로 공유 투표 링크(/g/코드)를 사용. 이메일은 위원별 고유 링크.
   const smsLink = meeting.group_token ? `${baseUrl}/g/${meeting.group_token}` : link;
-  const fromName = getSenderNameForMeeting(meeting);
+  const sender = getSenderInfoForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
@@ -108,7 +112,7 @@ async function sendAvailabilityRequest(meeting, member, token, baseUrl) {
     } else {
       subject = `[${meeting.committee_name}] ${meeting.title} 가능일정 회신 요청`;
       content = `${member.name} 위원님, 안녕하세요.\n"${meeting.title}" 회의 일정 조율을 위해 가능 일정을 확인 부탁드립니다.\n\n별도 로그인 없이 아래 링크에서 1분 안에 응답 가능합니다.\n${link}\n\n감사합니다.`;
-      const result = await deliverEmail(member, subject, content, fromName);
+      const result = await deliverEmail(member, subject, content, sender);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'availability_request', channel, subject, content, status }));
     }
@@ -123,7 +127,7 @@ async function sendAvailabilityRequest(meeting, member, token, baseUrl) {
 async function sendReminder(meeting, member, token, baseUrl) {
   const link = `${baseUrl}/avail/${token}`;
   const smsLink = meeting.group_token ? `${baseUrl}/g/${meeting.group_token}` : link;
-  const fromName = getSenderNameForMeeting(meeting);
+  const sender = getSenderInfoForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
@@ -135,7 +139,7 @@ async function sendReminder(meeting, member, token, baseUrl) {
     } else {
       subject = `[리마인드] ${meeting.title} 가능일정 회신 부탁드립니다`;
       content = `${member.name} 위원님, 아직 "${meeting.title}" 회의 가능 일정 응답이 확인되지 않습니다.\n빠른 회신 부탁드립니다.\n${link}`;
-      const result = await deliverEmail(member, subject, content, fromName);
+      const result = await deliverEmail(member, subject, content, sender);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'reminder', channel, subject, content, status }));
     }
@@ -148,7 +152,7 @@ async function sendReminder(meeting, member, token, baseUrl) {
 }
 
 async function sendMeetingConfirmed(meeting, member, slot) {
-  const fromName = getSenderNameForMeeting(meeting);
+  const sender = getSenderInfoForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const announcement = buildConfirmedAnnouncement(meeting, slot);
   const ids = [];
@@ -161,7 +165,7 @@ async function sendMeetingConfirmed(meeting, member, slot) {
     } else {
       subject = `[${meeting.committee_name}] ${meeting.title} 일정 확정 안내`;
       content = `${member.name} 위원님, 안녕하세요.\n\n${announcement}`;
-      const result = await deliverEmail(member, subject, content, fromName);
+      const result = await deliverEmail(member, subject, content, sender);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'meeting_confirmed', channel, subject, content, status }));
     }
@@ -173,7 +177,7 @@ async function sendCreatorConfirmation(meeting, operator, slot, baseUrl) {
   const announcement = buildConfirmedAnnouncement(meeting, slot);
   const subject = `[일정 확정] ${meeting.title} — 회의 일정 확정 안내`;
   const content = `${operator.name} 운영자님, 안녕하세요.\n\n"${meeting.title}" 회의 일정이 확정되었습니다.\n전체 위원에게 확정 안내 메일이 발송되었습니다.\n\n${announcement}\n\n──────── 📱 SMS / 카톡 전달용 ────────\n${announcement}\n──────────────────────────────\n\n관리자 페이지: ${baseUrl}/admin/meetings/${meeting.id}\n감사합니다.`;
-  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderNameForMeeting(meeting));
+  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderInfoForMeeting(meeting));
   const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
   return logNotification({ meetingId: meeting.id, memberId: null, type: 'creator_confirmed', channel: 'email', subject, content, status });
 }
@@ -194,7 +198,7 @@ async function sendCreatorTieChoice(meeting, operator, topSlots, baseUrl) {
     `감사합니다.`,
   ];
   const content = lines.join('\n');
-  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderNameForMeeting(meeting));
+  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderInfoForMeeting(meeting));
   const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
   return logNotification({ meetingId: meeting.id, memberId: null, type: 'creator_tie', channel: 'email', subject, content, status });
 }
@@ -219,7 +223,7 @@ async function sendCreatorReadyToConfirm(meeting, operator, slotsInfo, quorum, b
     `감사합니다.`,
   ];
   const content = lines.join('\n');
-  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderNameForMeeting(meeting));
+  const result = await deliverEmail({ email: operator.email, name: operator.name }, subject, content, getSenderInfoForMeeting(meeting));
   const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
   return logNotification({ meetingId: meeting.id, memberId: null, type: 'creator_ready', channel: 'email', subject, content, status });
 }
@@ -269,7 +273,7 @@ async function maybeAutoConfirmMeeting(meetingId, baseUrl) {
 async function sendSignatureRequest(meeting, member, token, baseUrl, opts = {}) {
   const link = `${baseUrl}/sign/${token}`;
   const minutesLink = opts.hasUploadedMinutes ? `${baseUrl}/minutes/${token}` : null;
-  const fromName = getSenderNameForMeeting(meeting);
+  const sender = getSenderInfoForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
@@ -291,7 +295,7 @@ async function sendSignatureRequest(meeting, member, token, baseUrl, opts = {}) 
         parts.push(`▶ 회의록 파일 다운로드: ${minutesLink}`);
       }
       content = parts.join('\n');
-      const result = await deliverEmail(member, subject, content, fromName);
+      const result = await deliverEmail(member, subject, content, sender);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_request', channel, subject, content, status }));
     }
@@ -302,7 +306,7 @@ async function sendSignatureRequest(meeting, member, token, baseUrl, opts = {}) 
 async function sendSignatureReminder(meeting, member, token, baseUrl, opts = {}) {
   const link = `${baseUrl}/sign/${token}`;
   const minutesLink = opts.hasUploadedMinutes ? `${baseUrl}/minutes/${token}` : null;
-  const fromName = getSenderNameForMeeting(meeting);
+  const sender = getSenderInfoForMeeting(meeting);
   const channels = pickChannels(meeting, member);
   const ids = [];
   for (const { channel } of channels) {
@@ -325,7 +329,7 @@ async function sendSignatureReminder(meeting, member, token, baseUrl, opts = {})
       if (minutesLink) parts.push(`▶ 회의록 파일 다운로드: ${minutesLink}`);
       parts.push('', '바쁘신 와중에 죄송하지만 확인 부탁드립니다.', '감사합니다.');
       content = parts.join('\n');
-      const result = await deliverEmail(member, subject, content, fromName);
+      const result = await deliverEmail(member, subject, content, sender);
       const status = result.ok ? `발송 OK (${result.messageId || ''})` : `실패: ${result.reason}${result.error ? ' / ' + result.error : ''}`;
       ids.push(logNotification({ meetingId: meeting.id, memberId: member.id, type: 'signature_reminder', channel, subject, content, status }));
     }

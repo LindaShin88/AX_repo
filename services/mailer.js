@@ -94,7 +94,7 @@ function extractEmailAddress(s) {
   return (m ? m[1] : String(s)).trim();
 }
 
-async function sendMail({ to, subject, text, html, fromName }) {
+async function sendMail({ to, subject, text, html, fromName, replyTo }) {
   if (!to) return { ok: false, reason: 'no-recipient' };
   const { transport, cfg } = await buildTransport();
   if (!transport) return { ok: false, reason: 'smtp-not-configured' };
@@ -107,12 +107,19 @@ async function sendMail({ to, subject, text, html, fromName }) {
       if (safeName && addr) fromHeader = `"${safeName}" <${addr}>`;
     }
     const finalHtml = html || (text ? `<div style="font-family:'Pretendard','맑은 고딕',sans-serif;line-height:1.6;color:#1f2937;">${textToHtml(text)}</div>` : '');
-    const info = await transport.sendMail({
+    const mailOptions = {
       from: fromHeader,
       to, subject,
       text: text || (html ? html.replace(/<[^>]+>/g, '') : ''),
       html: finalHtml,
-    });
+    };
+    // 위원이 "답장"하면 이 주소로 가게 한다(보통 그 위원회 담당 운영자의 가입 이메일).
+    // 발송 자체는 공용 계정 그대로라 스팸/인증 문제 없음.
+    if (replyTo) {
+      const replyAddr = extractEmailAddress(replyTo) || String(replyTo).replace(/[\r\n]/g, '').trim();
+      if (replyAddr) mailOptions.replyTo = replyAddr;
+    }
+    const info = await transport.sendMail(mailOptions);
     return { ok: true, messageId: info.messageId, response: info.response };
   } catch (err) {
     return { ok: false, reason: err.code || 'send-error', error: err.message };
