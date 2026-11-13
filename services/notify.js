@@ -85,10 +85,10 @@ function buildMailFooter(sender) {
   let line;
   if (sender && sender.replyTo) {
     line = who
-      ? `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자 ${who} 에게 자동으로 전달됩니다.`
-      : `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자에게 자동으로 전달됩니다.`;
+      ? `이 메일은 위원회 자동화 플랫폼에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자 ${who} 에게 자동으로 전달됩니다.`
+      : `이 메일은 위원회 자동화 플랫폼에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자에게 자동으로 전달됩니다.`;
   } else {
-    line = `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.`;
+    line = `이 메일은 위원회 자동화 플랫폼에서 발송된 메일입니다.`;
   }
   return `\n\n────────────────────\n${line}`;
 }
@@ -113,17 +113,16 @@ async function deliverEmail(member, subject, content, sender = null) {
 }
 
 function pickChannels(meeting, member) {
-  const channels = (meeting.notify_channels || 'email,sms').split(',').map(s => s.trim()).filter(Boolean);
+  // notify_channels가 null/undefined(과거 회의)면 기본값(email,sms).
+  // 빈 문자열('')이면 "운영자가 모든 채널을 끈 것"이므로 아무 것도 보내지 않는다(폴백 없음).
+  const raw = meeting.notify_channels == null ? 'email,sms' : meeting.notify_channels;
+  const channels = String(raw).split(',').map(s => s.trim()).filter(Boolean);
   const result = [];
   for (const ch of channels) {
     if (ch === 'email' && member.email) result.push({ channel: 'email', recipient: member.email });
     // SMS는 자동 발송이 아니라 운영자가 복사해 직접 보내므로, 전화번호가 없어도
     // 복사용 문자 텍스트는 항상 생성한다(번호는 운영자가 채워 보냄).
     if (ch === 'sms') result.push({ channel: 'sms', recipient: member.phone || null });
-  }
-  if (result.length === 0) {
-    if (member.email) result.push({ channel: 'email', recipient: member.email });
-    else if (member.phone) result.push({ channel: 'sms', recipient: member.phone });
   }
   return result;
 }

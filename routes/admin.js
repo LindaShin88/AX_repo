@@ -918,8 +918,8 @@ router.get('/committees/:id/meetings/new', async (req, res) => {
   const op = req.session.operator || {};
   const mgr = (op.name ? op.name + (op.department ? '(' + op.department + ')' : '') : '').trim();
   const mailFooterPreview = op.email
-    ? `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자 ${mgr} 에게 자동으로 전달됩니다.`
-    : `이 메일은 위원회 자동화 시스템에서 발송된 메일입니다.`;
+    ? `이 메일은 위원회 자동화 플랫폼에서 발송된 메일입니다.\n문의·답변은 '답장'을 누르시면 담당자 ${mgr} 에게 자동으로 전달됩니다.`
+    : `이 메일은 위원회 자동화 플랫폼에서 발송된 메일입니다.`;
   res.render('admin/meeting_new', { committee, members, defaults: defaultConstraints(), previewBaseUrl, mailFooterPreview });
 });
 
@@ -947,8 +947,10 @@ router.post('/committees/:id/meetings', async (req, res) => {
     ),
     mode: req.body.schedule_mode === 'direct' ? 'direct' : 'range',
   };
-  const channelsArr = [].concat(req.body.notify_channels || ['email','sms']);
-  const channels = channelsArr.length ? channelsArr.join(',') : 'email,sms';
+  // 알림 발송 채널: 체크된 것만 저장. 이메일 체크를 해제하면 빈 값('')으로 저장되어
+  // 자동 메일 발송을 하지 않는다(회의·슬롯·투표링크 등 나머지는 그대로 생성).
+  const channelsArr = [].concat(req.body.notify_channels || []).filter(Boolean);
+  const channels = channelsArr.join(',');
   const arsAfter = parseInt(req.body.ars_after_minutes) || 0;
   const info = db.prepare(`
     INSERT INTO meetings (committee_id, title, description, location, duration_minutes, schedule_constraints, notify_channels, ars_after_minutes)
