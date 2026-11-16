@@ -1419,6 +1419,28 @@ router.post('/meetings/:id/request-external-signatures', async (req, res) => {
   res.redirect(`/admin/meetings/${meeting.id}?action=external-signatures-sent&count=${sentCount}`);
 });
 
+// 공통 서명 링크/SMS용: 선택한 대상에게 서명 토큰만 발급(메일 발송은 안 함).
+// 이렇게 해야 공통 링크(/gs)에 "선택한 대상"만 나타난다.
+router.post('/meetings/:id/prepare-signatures', (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.id FROM meetings mt JOIN committees c ON c.id = mt.committee_id
+    WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting) return res.status(404).json({ ok: false, reason: 'not-found' });
+  const externals = db.prepare(`
+    SELECT id FROM members WHERE committee_id = (SELECT committee_id FROM meetings WHERE id = ?) AND type IN ('external','student')
+  `).all(meeting.id);
+  const extIds = new Set(externals.map(m => m.id));
+  const selectedIds = [].concat(req.body.member_ids || []).map(x => parseInt(x, 10)).filter(id => extIds.has(id));
+  if (!selectedIds.length) return res.json({ ok: false, reason: 'none-selected' });
+  const insertToken = db.prepare(`INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'signature')`);
+  for (const id of selectedIds) {
+    const existing = db.prepare(`SELECT 1 FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = 'signature'`).get(meeting.id, id);
+    if (!existing) insertToken.run(id, meeting.id, uuidv4());
+  }
+  res.json({ ok: true, count: selectedIds.length });
+});
+
 router.post('/meetings/:id/remind-external-signatures', async (req, res) => {
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name FROM meetings mt

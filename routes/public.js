@@ -194,23 +194,17 @@ router.get('/gs/:code', (req, res) => {
   `).get(req.params.code);
   if (!meeting) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
 
+  // 관리자가 "선택한 서명 대상"에게만 토큰이 발급돼 있다. 그 토큰이 있는 외부위원·학생만 보여준다.
+  // (여기서 토큰을 새로 만들지 않는다 → 선택 안 된 사람은 공통 링크에 안 뜸)
   const members = db.prepare(`
-    SELECT id, name, type, role, affiliation FROM members
-     WHERE committee_id = ? AND type IN ('external','student') ORDER BY id
-  `).all(meeting.committee_id);
-  const tokenRows = db.prepare(`SELECT member_id, token FROM member_tokens WHERE meeting_id = ? AND purpose = 'signature'`).all(meeting.id);
+    SELECT m.id, m.name, m.type, m.role, m.affiliation, t.token
+      FROM members m
+      JOIN member_tokens t ON t.member_id = m.id AND t.meeting_id = ? AND t.purpose = 'signature'
+     WHERE m.committee_id = ? AND m.type IN ('external','student')
+     ORDER BY m.id
+  `).all(meeting.id, meeting.committee_id);
   const tokenByMember = {};
-  tokenRows.forEach(t => { tokenByMember[t.member_id] = t.token; });
-  // 토큰이 없는 대상은 즉석 생성(공통 링크만 보내도 서명 가능하게)
-  const { v4: uuidv4 } = require('uuid');
-  const insertToken = db.prepare(`INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'signature')`);
-  for (const m of members) {
-    if (!tokenByMember[m.id]) {
-      const tk = uuidv4();
-      insertToken.run(m.id, meeting.id, tk);
-      tokenByMember[m.id] = tk;
-    }
-  }
+  members.forEach(m => { tokenByMember[m.id] = m.token; });
   const signed = db.prepare(`SELECT member_id FROM signatures WHERE meeting_id = ?`).all(meeting.id);
   const signedSet = new Set(signed.map(s => s.member_id));
 
