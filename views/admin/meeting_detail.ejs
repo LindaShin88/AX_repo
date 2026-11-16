@@ -551,6 +551,8 @@
       <div class="mb-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg px-3 py-2 text-sm">✅ 모든 서명 대상(외부위원·학생)이 이미 서명을 완료했어요!</div>
     <% } else if (locals.actionFlag === 'no-external') { %>
       <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⚠️ 이 위원회에 서명 대상(외부위원·학생)이 없습니다.</div>
+    <% } else if (locals.actionFlag === 'no-external-selected') { %>
+      <div class="mb-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm">⚠️ 선택된 발송 대상이 없습니다. 보낼 분을 체크한 뒤 다시 발송해주세요.</div>
     <% } %>
 
     <div class="mb-5 border border-slate-200 rounded-xl p-4 bg-slate-50">
@@ -675,16 +677,78 @@
       <% if (externals.length === 0) { %>
         <p class="text-sm text-slate-500 py-2">이 위원회에 서명 대상(외부위원·학생)이 없습니다.</p>
       <% } else { %>
-        <% const pendingExternals = externals.filter(m => !signatures.find(s => s.member_id === m.id)); %>
-        <div class="flex gap-2 mb-3 items-center flex-wrap">
-          <form method="POST" action="/admin/meetings/<%= meeting.id %>/request-external-signatures">
-            <button class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">📨 외부위원·학생 전체에게 서명 요청 메일 발송</button>
-          </form>
-          <% if (pendingExternals.length > 0) { %>
+        <% const confirmedResp = (mid) => responses.find(x => String(x.slot_id) === String(meeting.confirmed_slot_id) && x.member_id === mid); %>
+        <% const remindTargets = externals.filter(m => !signatures.find(s => s.member_id === m.id) && tokens.find(t => t.member_id === m.id && t.purpose === 'signature')); %>
+        <% const defaultCount = externals.filter(m => { if (signatures.find(s => s.member_id === m.id)) return false; if (!meeting.confirmed_slot_id) return true; const r = confirmedResp(m.id); return r && r.response === 'available'; }).length; %>
+
+        <form id="ext-sign-form" method="POST" action="/admin/meetings/<%= meeting.id %>/request-external-signatures">
+          <div class="flex gap-2 mb-2 items-center flex-wrap">
+            <button type="submit" class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">📨 선택한 분에게 서명 요청 메일 발송</button>
+            <span class="text-xs text-slate-500">
+              <% if (meeting.confirmed_slot_id) { %>확정일에 <strong>참석</strong>한 분이 기본 선택돼요. 당일 변동(불참·추가 참석)은 체크로 조절하세요.<% } else { %>보낼 대상을 체크하세요.<% } %>
+            </span>
+          </div>
+
+          <table class="w-full text-sm">
+            <thead class="text-xs text-slate-500 border-b">
+              <tr>
+                <th class="py-2 text-center w-8"><input type="checkbox" id="ext-check-all" onchange="document.querySelectorAll('.ext-chk:not(:disabled)').forEach(c=>c.checked=this.checked)"></th>
+                <th class="py-2 text-left">서명 대상</th>
+                <th class="text-left">참석(확정일)</th>
+                <th class="text-left">서명 상태</th>
+                <th class="text-left">서명 링크</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% externals.forEach(m => { %>
+                <% const sig = signatures.find(s => s.member_id === m.id); %>
+                <% const t = tokens.find(tt => tt.member_id === m.id && tt.purpose === 'signature'); %>
+                <% const r = confirmedResp(m.id); const att = r ? r.response : null; %>
+                <% const checked = !sig && (meeting.confirmed_slot_id ? att === 'available' : true); %>
+                <tr class="border-b last:border-b-0 <%= checked ? '' : 'bg-slate-50' %>">
+                  <td class="py-2 text-center">
+                    <input type="checkbox" class="ext-chk" name="member_ids" value="<%= m.id %>" <%= checked ? 'checked' : '' %> <%= sig ? 'disabled' : '' %>>
+                  </td>
+                  <td class="py-2">
+                    <div class="font-medium"><%= m.name %></div>
+                    <div class="text-xs text-slate-500"><%= [m.affiliation, m.role].filter(Boolean).join(' / ') %></div>
+                  </td>
+                  <td>
+                    <% if (!meeting.confirmed_slot_id) { %><span class="text-xs text-slate-400">—</span>
+                    <% } else if (att === 'available') { %><span class="badge badge-green">✅ 참석</span>
+                    <% } else if (att === 'unavailable') { %><span class="badge badge-red">✖ 불참</span>
+                    <% } else { %><span class="badge badge-gray">— 미응답</span><% } %>
+                  </td>
+                  <td>
+                    <% if (sig) { %><span class="badge badge-green">서명완료</span>
+                    <% } else { %><span class="badge badge-gray">대기중</span><% } %>
+                  </td>
+                  <td>
+                    <% if (t) { %>
+                      <div class="flex gap-1 flex-wrap items-center">
+                        <input type="text" readonly value="<%= baseUrl %>/sign/<%= t.token %>"
+                               onclick="this.select()"
+                               class="text-xs border rounded px-2 py-1 bg-slate-50 w-56 font-mono">
+                        <button type="button" onclick="navigator.clipboard.writeText('<%= baseUrl %>/sign/<%= t.token %>'); this.textContent='✓ 복사됨'; setTimeout(()=>this.textContent='📋 복사',1500)"
+                                class="text-xs border rounded px-2 py-1 hover:bg-slate-50">📋 복사</button>
+                        <a href="/sign/<%= t.token %>" target="_blank" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">↗ 미리보기</a>
+                      </div>
+                    <% } else { %>
+                      <span class="text-xs text-slate-400">발송하면 링크 생성</span>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </form>
+
+        <div class="flex gap-2 mt-3 items-center flex-wrap">
+          <% if (remindTargets.length > 0) { %>
             <form method="POST" action="/admin/meetings/<%= meeting.id %>/remind-external-signatures"
-                  onsubmit="return confirm('아직 서명하지 않은 <%= pendingExternals.length %>명(외부위원·학생)에게 리마인드 메일을 보냅니다. 진행할까요?')">
+                  onsubmit="return confirm('아직 서명하지 않은 <%= remindTargets.length %>명(발송 대상)에게 리마인드 메일을 보냅니다. 진행할까요?')">
               <button class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
-                ⏰ 미서명자 <%= pendingExternals.length %>명에게 리마인드
+                ⏰ 미서명자 <%= remindTargets.length %>명에게 리마인드
               </button>
             </form>
           <% } %>
@@ -695,48 +759,6 @@
             <span class="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1">💡 회의록 파일을 먼저 업로드하면 메일에 다운로드 링크가 포함됩니다.</span>
           <% } %>
         </div>
-
-        <table class="w-full text-sm">
-          <thead class="text-xs text-slate-500 border-b">
-            <tr>
-              <th class="py-2 text-left">서명 대상</th>
-              <th class="text-left">상태</th>
-              <th class="text-left">서명 시각</th>
-              <th class="text-left">서명 링크</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% externals.forEach(m => { %>
-              <% const sig = signatures.find(s => s.member_id === m.id); %>
-              <% const t = tokens.find(tt => tt.member_id === m.id && tt.purpose === 'signature'); %>
-              <tr class="border-b last:border-b-0">
-                <td class="py-2">
-                  <div class="font-medium"><%= m.name %></div>
-                  <div class="text-xs text-slate-500"><%= [m.affiliation, m.role].filter(Boolean).join(' / ') %></div>
-                </td>
-                <td>
-                  <% if (sig) { %><span class="badge badge-green">서명완료</span>
-                  <% } else { %><span class="badge badge-gray">대기중</span><% } %>
-                </td>
-                <td class="text-xs text-slate-500"><%= sig ? sig.signed_at : '-' %></td>
-                <td>
-                  <% if (t) { %>
-                    <div class="flex gap-1 flex-wrap items-center">
-                      <input type="text" readonly value="<%= baseUrl %>/sign/<%= t.token %>"
-                             onclick="this.select()"
-                             class="text-xs border rounded px-2 py-1 bg-slate-50 w-64 font-mono">
-                      <button onclick="navigator.clipboard.writeText('<%= baseUrl %>/sign/<%= t.token %>'); this.textContent='✓ 복사됨'; setTimeout(()=>this.textContent='📋 복사',1500)"
-                              class="text-xs border rounded px-2 py-1 hover:bg-slate-50">📋 복사</button>
-                      <a href="/sign/<%= t.token %>" target="_blank" class="text-xs border rounded px-2 py-1 hover:bg-slate-50">↗ 미리보기</a>
-                    </div>
-                  <% } else { %>
-                    <span class="text-xs text-slate-400">위 버튼으로 발송하면 링크 생성</span>
-                  <% } %>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
       <% } %>
     </div>
 

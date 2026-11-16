@@ -1390,12 +1390,19 @@ router.post('/meetings/:id/request-external-signatures', async (req, res) => {
     return res.redirect(`/admin/meetings/${meeting.id}?action=no-external`);
   }
 
+  // 화면에서 체크한 대상(member_ids)에게만 발송. 하나도 선택 안 했으면 발송하지 않는다.
+  const selectedIds = [].concat(req.body.member_ids || []).map(x => parseInt(x, 10)).filter(Boolean);
+  const targets = externals.filter(m => selectedIds.includes(m.id));
+  if (targets.length === 0) {
+    return res.redirect(`/admin/meetings/${meeting.id}?action=no-external-selected`);
+  }
+
   const baseUrl = mailer.getPublicBaseUrl() || `${req.protocol}://${req.get('host')}`;
   const insertToken = db.prepare(`
     INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'signature')
   `);
   let sentCount = 0;
-  for (const m of externals) {
+  for (const m of targets) {
     const existing = db.prepare(`
       SELECT * FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = 'signature'
     `).get(meeting.id, m.id);
