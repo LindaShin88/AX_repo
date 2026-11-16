@@ -184,6 +184,39 @@ router.get('/g/:code', (req, res) => {
   res.render('public/avail_group', { meeting, members, tokenByMember, respondedSet });
 });
 
+// 공통 서명 링크(일정 조율의 /g/ 처럼): 외부위원·학생이 본인 이름을 골라 서명으로 이동.
+router.get('/gs/:code', (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.id, mt.committee_id, mt.title, mt.description, mt.location, mt.status, mt.confirmed_slot_id,
+           c.name AS committee_name
+    FROM meetings mt JOIN committees c ON c.id = mt.committee_id
+    WHERE mt.group_token = ?
+  `).get(req.params.code);
+  if (!meeting) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
+
+  const members = db.prepare(`
+    SELECT id, name, type, role, affiliation FROM members
+     WHERE committee_id = ? AND type IN ('external','student') ORDER BY id
+  `).all(meeting.committee_id);
+  const tokenRows = db.prepare(`SELECT member_id, token FROM member_tokens WHERE meeting_id = ? AND purpose = 'signature'`).all(meeting.id);
+  const tokenByMember = {};
+  tokenRows.forEach(t => { tokenByMember[t.member_id] = t.token; });
+  // 토큰이 없는 대상은 즉석 생성(공통 링크만 보내도 서명 가능하게)
+  const { v4: uuidv4 } = require('uuid');
+  const insertToken = db.prepare(`INSERT INTO member_tokens (member_id, meeting_id, token, purpose) VALUES (?, ?, ?, 'signature')`);
+  for (const m of members) {
+    if (!tokenByMember[m.id]) {
+      const tk = uuidv4();
+      insertToken.run(m.id, meeting.id, tk);
+      tokenByMember[m.id] = tk;
+    }
+  }
+  const signed = db.prepare(`SELECT member_id FROM signatures WHERE meeting_id = ?`).all(meeting.id);
+  const signedSet = new Set(signed.map(s => s.member_id));
+
+  res.render('public/sign_group', { meeting, members, tokenByMember, signedSet });
+});
+
 router.get('/sign/:token', (req, res) => {
   const token = db.prepare(`
     SELECT t.*, m.name AS member_name, m.role, m.affiliation, m.type AS member_type,
