@@ -584,11 +584,8 @@
           <div id="minutes-file-name" class="text-xs text-slate-500">PDF 권장 · 한글(.hwp/.hwpx)도 가능 · 최대 30MB</div>
           <input id="minutes-file-input" type="file" name="minutes_file" accept=".pdf,.hwp,.hwpx" required class="hidden">
         </label>
-        <div class="mt-2 flex items-center justify-between gap-2 flex-wrap">
-          <p class="text-xs text-slate-500">※ 끌어다 놓으면 바로 업로드돼요. PDF로 올리시면 미리보기가 됩니다.</p>
-          <button type="submit" class="bg-slate-900 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">
-            <%= meeting.uploaded_minutes_path ? '📤 새 파일로 교체' : '📤 업로드' %>
-          </button>
+        <div class="mt-2">
+          <p class="text-xs text-slate-500">※ 끌어다 놓거나 선택하면 <strong>바로 업로드</strong>돼요. PDF로 올리시면 미리보기가 됩니다.</p>
         </div>
       </form>
       <script>
@@ -605,7 +602,23 @@
             nameEl.className = 'text-xs text-slate-800 font-medium';
           }
         }
-        input.addEventListener('change', showName);
+        function validOk() {
+          if (!input.files || !input.files.length) return false;
+          var ext = (input.files[0].name.split('.').pop() || '').toLowerCase();
+          if (allowed.indexOf(ext) === -1) {
+            alert('PDF 또는 한글(.hwp/.hwpx) 파일만 올릴 수 있어요.\n선택한 파일: ' + input.files[0].name);
+            input.value = '';
+            return false;
+          }
+          return true;
+        }
+        function uploadNow() {
+          nameEl.textContent = '⏳ 업로드 중…';
+          nameEl.className = 'text-xs text-indigo-700 font-medium';
+          form.submit();
+        }
+        // 클릭해서 선택해도 바로 업로드
+        input.addEventListener('change', function () { if (validOk()) { showName(); uploadNow(); } });
         ['dragenter', 'dragover'].forEach(function (ev) {
           zone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); zone.classList.add('border-indigo-500', 'bg-indigo-50'); });
         });
@@ -632,7 +645,7 @@
             return;
           }
           showName();
-          form.submit(); // 드롭하면 바로 업로드
+          uploadNow(); // 드롭하면 바로 업로드
         });
         // 영역 밖에 파일을 떨어뜨렸을 때 브라우저가 파일을 열어버리는 것 방지
         ['dragover', 'drop'].forEach(function (ev) {
