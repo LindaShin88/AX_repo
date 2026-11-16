@@ -1416,6 +1416,8 @@ router.post('/meetings/:id/request-external-signatures', async (req, res) => {
     await notify.sendSignatureRequest(meeting, m, token, baseUrl, { hasUploadedMinutes: !!meeting.uploaded_minutes_path });
     sentCount += 1;
   }
+  // 공통 링크에 보일 대상도 방금 발송한 선택 대상으로 맞춘다
+  db.prepare('UPDATE meetings SET signature_targets = ? WHERE id = ?').run(JSON.stringify(targets.map(m => m.id)), meeting.id);
   res.redirect(`/admin/meetings/${meeting.id}?action=external-signatures-sent&count=${sentCount}`);
 });
 
@@ -1438,6 +1440,8 @@ router.post('/meetings/:id/prepare-signatures', (req, res) => {
     const existing = db.prepare(`SELECT 1 FROM member_tokens WHERE meeting_id = ? AND member_id = ? AND purpose = 'signature'`).get(meeting.id, id);
     if (!existing) insertToken.run(id, meeting.id, uuidv4());
   }
+  // 공통 링크에 보일 대상 = 방금 선택한 사람들로 설정(기존 토큰과 무관하게 이 집합만 노출)
+  db.prepare('UPDATE meetings SET signature_targets = ? WHERE id = ?').run(JSON.stringify(selectedIds), meeting.id);
   res.json({ ok: true, count: selectedIds.length });
 });
 

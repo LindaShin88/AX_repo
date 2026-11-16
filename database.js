@@ -229,6 +229,7 @@ ensureColumn('meetings', 'uploaded_minutes_blob', 'BLOB');
 ensureColumn('meetings', 'final_pdf_path', 'TEXT');
 ensureColumn('meetings', 'final_pdf_generated_at', 'DATETIME');
 ensureColumn('meetings', 'group_token', 'TEXT'); // 공유 투표 링크용 짧은 코드
+ensureColumn('meetings', 'signature_targets', 'TEXT'); // 공통 서명 링크에 보일 대상(선택한 member id JSON 배열)
 ensureColumn('directory', 'gubun', 'TEXT'); // 교원/직원 구분(엑셀 '구분' 열)
 
 function migrateMemberTypes() {

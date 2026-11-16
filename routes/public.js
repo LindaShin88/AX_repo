@@ -188,21 +188,24 @@ router.get('/g/:code', (req, res) => {
 router.get('/gs/:code', (req, res) => {
   const meeting = db.prepare(`
     SELECT mt.id, mt.committee_id, mt.title, mt.description, mt.location, mt.status, mt.confirmed_slot_id,
-           c.name AS committee_name
+           mt.signature_targets, c.name AS committee_name
     FROM meetings mt JOIN committees c ON c.id = mt.committee_id
     WHERE mt.group_token = ?
   `).get(req.params.code);
   if (!meeting) return res.status(404).render('public/error', { message: '유효하지 않은 링크입니다.' });
 
-  // 관리자가 "선택한 서명 대상"에게만 토큰이 발급돼 있다. 그 토큰이 있는 외부위원·학생만 보여준다.
-  // (여기서 토큰을 새로 만들지 않는다 → 선택 안 된 사람은 공통 링크에 안 뜸)
-  const members = db.prepare(`
+  // 관리자가 마지막에 "선택한 서명 대상"(signature_targets)만 보여준다.
+  // 과거 버그/전체발송으로 토큰이 남아 있어도, 이 집합에 없는 사람은 공통 링크에 안 뜬다.
+  let targetSet = new Set();
+  try { const a = JSON.parse(meeting.signature_targets || '[]'); if (Array.isArray(a)) targetSet = new Set(a.map(Number)); } catch (e) {}
+  let members = db.prepare(`
     SELECT m.id, m.name, m.type, m.role, m.affiliation, t.token
       FROM members m
       JOIN member_tokens t ON t.member_id = m.id AND t.meeting_id = ? AND t.purpose = 'signature'
      WHERE m.committee_id = ? AND m.type IN ('external','student')
      ORDER BY m.id
   `).all(meeting.id, meeting.committee_id);
+  members = members.filter(m => targetSet.has(m.id));
   const tokenByMember = {};
   members.forEach(m => { tokenByMember[m.id] = m.token; });
   const signed = db.prepare(`SELECT member_id FROM signatures WHERE meeting_id = ?`).all(meeting.id);
