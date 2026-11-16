@@ -1539,6 +1539,12 @@ router.get('/meetings/:id/final-pdf', (req, res) => {
   if (!meeting || !meeting.final_pdf_path) return res.status(404).send('최종 PDF가 아직 생성되지 않았습니다.');
   const fp = path.join(__dirname, '..', meeting.final_pdf_path);
   if (!fs.existsSync(fp)) return res.status(404).send('파일을 찾을 수 없습니다.');
+  // ?inline=1 이면 다운로드 대신 브라우저에서 바로 미리보기(새 창 미리보기용)
+  if (req.query.inline) {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="minutes_${meeting.id}.pdf"`);
+    return res.sendFile(fp);
+  }
   res.download(fp, `회의록_서명완료_${meeting.id}.pdf`);
 });
 

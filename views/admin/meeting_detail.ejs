@@ -831,7 +831,7 @@
              class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-1.5">
             📄 최종 PDF 다운로드
           </a>
-          <a href="/admin/meetings/<%= meeting.id %>/final-pdf" target="_blank"
+          <a href="/admin/meetings/<%= meeting.id %>/final-pdf?inline=1" target="_blank"
              class="border bg-white hover:bg-slate-50 px-3 py-2 rounded-lg text-sm">↗ 새 창으로 미리보기</a>
           <span class="text-xs text-slate-500">생성: <%= meeting.final_pdf_generated_at %></span>
         <% } %>
