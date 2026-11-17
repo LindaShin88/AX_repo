@@ -1467,7 +1467,7 @@ router.post('/meetings/:id/request-internal-approval', async (req, res) => {
   const subject = `[${meeting.committee_name}] ${meeting.title} 회의록 결재(서명) 요청`;
   let sentCount = 0;
   for (const m of targets) {
-    const content = `${m.name} 위원님, 안녕하세요.\n"${meeting.title}" 회의록이 내부 결재에 상신되어 있습니다.\n회의록 서명(결재)을 부탁드립니다.\n\n감사합니다.`;
+    const content = `${m.name} 위원님, 안녕하세요.\n"${meeting.title}" 회의록이 전자 결재에 상신되어 있습니다.\n회의록 서명(결재)을 부탁드립니다.\n\n감사합니다.`;
     const r = await notify.sendCustomEmail(meeting, m, subject, content);
     if (r.ok) sentCount += 1;
     notify.logNotification({
