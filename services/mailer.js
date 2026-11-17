@@ -72,12 +72,12 @@ async function buildTransport() {
     socketTimeout: 20000,       // 발송 중 소켓 무응답 한도(행 방지)
     tls: { servername },        // IP 접속이어도 인증서는 원래 호스트명으로 검증
     // 여러 통을 보낼 때 매번 새로 접속·인증하면 구글이 일부 인증을 간헐 거부(535)한다.
-    // 한 연결을 재사용(pool)하고 초당 발송 수를 제한해 과속·반복인증을 막는다.
+    // 한 연결을 재사용(pool)하고 초당 발송 수를 낮게 제한해 "대량/연속 발송 일시차단"을 피한다.
     pool: true,
     maxConnections: 1,
     maxMessages: 100,
-    rateDelta: 1000,
-    rateLimit: 8,
+    rateDelta: 1100,
+    rateLimit: 2,  // 초당 약 2통으로 천천히 → 구글 과속 차단(535) 회피
   });
   cachedSignature = sig;
   return { transport: cachedTransport, cfg: c };
