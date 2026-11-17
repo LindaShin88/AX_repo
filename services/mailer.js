@@ -71,6 +71,13 @@ async function buildTransport() {
     greetingTimeout: 10000,     // 서버 인사 대기 한도
     socketTimeout: 20000,       // 발송 중 소켓 무응답 한도(행 방지)
     tls: { servername },        // IP 접속이어도 인증서는 원래 호스트명으로 검증
+    // 여러 통을 보낼 때 매번 새로 접속·인증하면 구글이 일부 인증을 간헐 거부(535)한다.
+    // 한 연결을 재사용(pool)하고 초당 발송 수를 제한해 과속·반복인증을 막는다.
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 100,
+    rateDelta: 1000,
+    rateLimit: 8,
   });
   cachedSignature = sig;
   return { transport: cachedTransport, cfg: c };
@@ -100,36 +107,56 @@ function extractEmailAddress(s) {
   return email ? email[0].trim() : '';
 }
 
+// 간헐적인 SMTP 거부(구글 535 BadCredentials, 연결 끊김 등)는 "잠깐"인 경우가 많아
+// 전송 자체는 2번까지 더 재시도한다. 재시도 땐 상한 연결을 버리고 새로 붙인다.
+function isTransientSmtpError(err) {
+  const s = (String(err && err.code || '') + ' ' + String(err && err.message || '')).toLowerCase();
+  return /eauth|etimedout|econnreset|econnection|esocket|econnrefused|epipe|timeout|535|421|450|451|connection closed|socket/i.test(s);
+}
+
 async function sendMail({ to, subject, text, html, fromName, replyTo }) {
   if (!to) return { ok: false, reason: 'no-recipient' };
-  const { transport, cfg } = await buildTransport();
-  if (!transport) return { ok: false, reason: 'smtp-not-configured' };
-  try {
-    // 발신 주소는 인증된 공용 계정으로 고정하되, fromName이 있으면 표시 이름만 바꾼다.
-    let fromHeader = cfg.from || cfg.user;
-    if (fromName) {
-      const addr = extractEmailAddress(cfg.from) || extractEmailAddress(cfg.user) || cfg.user;
-      const safeName = String(fromName).replace(/["\r\n]/g, '').trim();
-      if (safeName && addr) fromHeader = `"${safeName}" <${addr}>`;
-    }
-    const finalHtml = html || (text ? `<div style="font-family:'Pretendard','맑은 고딕',sans-serif;line-height:1.6;color:#1f2937;">${textToHtml(text)}</div>` : '');
-    const mailOptions = {
-      from: fromHeader,
-      to, subject,
-      text: text || (html ? html.replace(/<[^>]+>/g, '') : ''),
-      html: finalHtml,
-    };
-    // 위원이 "답장"하면 이 주소로 가게 한다(보통 그 위원회 담당 운영자의 가입 이메일).
-    // 발송 자체는 공용 계정 그대로라 스팸/인증 문제 없음.
-    if (replyTo) {
-      const replyAddr = extractEmailAddress(replyTo) || String(replyTo).replace(/[\r\n]/g, '').trim();
-      if (replyAddr) mailOptions.replyTo = replyAddr;
-    }
-    const info = await transport.sendMail(mailOptions);
-    return { ok: true, messageId: info.messageId, response: info.response };
-  } catch (err) {
-    return { ok: false, reason: err.code || 'send-error', error: err.message };
+  let built = await buildTransport();
+  if (!built.transport) return { ok: false, reason: 'smtp-not-configured' };
+  const cfg = built.cfg;
+
+  // 발신 주소는 인증된 공용 계정으로 고정하되, fromName이 있으면 표시 이름만 바꾼다.
+  let fromHeader = cfg.from || cfg.user;
+  if (fromName) {
+    const addr = extractEmailAddress(cfg.from) || extractEmailAddress(cfg.user) || cfg.user;
+    const safeName = String(fromName).replace(/["\r\n]/g, '').trim();
+    if (safeName && addr) fromHeader = `"${safeName}" <${addr}>`;
   }
+  const finalHtml = html || (text ? `<div style="font-family:'Pretendard','맑은 고딕',sans-serif;line-height:1.6;color:#1f2937;">${textToHtml(text)}</div>` : '');
+  const mailOptions = {
+    from: fromHeader,
+    to, subject,
+    text: text || (html ? html.replace(/<[^>]+>/g, '') : ''),
+    html: finalHtml,
+  };
+  // 위원이 "답장"하면 이 주소로 가게 한다(보통 그 위원회 담당 운영자의 가입 이메일).
+  if (replyTo) {
+    const replyAddr = extractEmailAddress(replyTo) || String(replyTo).replace(/[\r\n]/g, '').trim();
+    if (replyAddr) mailOptions.replyTo = replyAddr;
+  }
+
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const info = await built.transport.sendMail(mailOptions);
+      return { ok: true, messageId: info.messageId, response: info.response };
+    } catch (err) {
+      lastErr = err;
+      if (attempt >= 2 || !isTransientSmtpError(err)) break;
+      // 상한 연결이 문제일 수 있으니 캐시 버리고 잠깐 뒤 새 연결로 재시도
+      try { cachedTransport && cachedTransport.close && cachedTransport.close(); } catch (e) {}
+      cachedTransport = null; cachedSignature = '';
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+      built = await buildTransport();
+      if (!built.transport) break;
+    }
+  }
+  return { ok: false, reason: (lastErr && lastErr.code) || 'send-error', error: lastErr && lastErr.message };
 }
 
 async function verifySmtp() {
