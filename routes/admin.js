@@ -1445,6 +1445,39 @@ router.post('/meetings/:id/prepare-signatures', (req, res) => {
   res.json({ ok: true, count: selectedIds.length });
 });
 
+// 내부 결재 독촉: 회사 내부결재에서 결재(서명)를 안 한 내부 위원(교원·직원)에게
+// "회의록 결재/서명 부탁" 메일을 바로 발송한다. (SMS는 화면에서 포맷 복사)
+router.post('/meetings/:id/request-internal-approval', async (req, res) => {
+  const meeting = db.prepare(`
+    SELECT mt.*, c.name AS committee_name FROM meetings mt
+    JOIN committees c ON c.id = mt.committee_id WHERE mt.id = ? AND c.operator_id = ?
+  `).get(req.params.id, req.session.operatorId);
+  if (!meeting) return res.status(404).send('Not found');
+
+  const internal = db.prepare(`
+    SELECT * FROM members WHERE committee_id = ? AND type IN ('faculty','staff')
+  `).all(meeting.committee_id);
+  const intIds = new Set(internal.map(m => m.id));
+  const selectedIds = [].concat(req.body.member_ids || []).map(x => parseInt(x, 10)).filter(id => intIds.has(id));
+  const targets = internal.filter(m => selectedIds.includes(m.id) && m.email);
+  if (targets.length === 0) {
+    return res.redirect(`/admin/meetings/${meeting.id}?action=no-approval-selected`);
+  }
+
+  const subject = `[${meeting.committee_name}] ${meeting.title} 회의록 결재(서명) 요청`;
+  let sentCount = 0;
+  for (const m of targets) {
+    const content = `${m.name} 위원님, 안녕하세요.\n"${meeting.title}" 회의록이 내부 결재에 상신되어 있습니다.\n회의록 서명(결재)을 부탁드립니다.\n\n감사합니다.`;
+    const r = await notify.sendCustomEmail(meeting, m, subject, content);
+    if (r.ok) sentCount += 1;
+    notify.logNotification({
+      meetingId: meeting.id, memberId: m.id, type: 'internal_approval', channel: 'email',
+      subject, content, status: r.ok ? `발송 OK (${r.messageId || ''})` : `실패: ${r.reason}${r.error ? ' / ' + r.error : ''}`,
+    });
+  }
+  res.redirect(`/admin/meetings/${meeting.id}?action=approval-sent&count=${sentCount}`);
+});
+
 router.post('/meetings/:id/remind-external-signatures', async (req, res) => {
   const meeting = db.prepare(`
     SELECT mt.*, c.name AS committee_name FROM meetings mt
