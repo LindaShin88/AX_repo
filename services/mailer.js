@@ -185,8 +185,29 @@ function setPublicBaseUrl(url) {
   `).run(clean);
 }
 
+// 새 가입 신청 알림을 받을 이메일(관리자가 설정화면에서 입력). app_settings에 저장돼
+// 라이브 DB에 영구 보존된다. 쉼표/세미콜론/공백으로 여러 명 지정 가능.
+// 설정이 비어있으면 빈 배열을 반환(그땐 라우트가 super_admin 이메일로 폴백).
+function getSignupAlertEmails() {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'signup_alert_emails'").get();
+  const raw = (row && row.value) || process.env.SIGNUP_ALERT_EMAILS || '';
+  return String(raw).split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+}
+function getSignupAlertEmailsRaw() {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'signup_alert_emails'").get();
+  return (row && row.value) || '';
+}
+function setSignupAlertEmails(value) {
+  const clean = (value || '').trim();
+  db.prepare(`
+    INSERT INTO app_settings (key, value, updated_at) VALUES ('signup_alert_emails', ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+  `).run(clean);
+}
+
 module.exports = {
   getSmtpConfig, setSmtpConfig, isSmtpConfigured,
   getPublicBaseUrl, setPublicBaseUrl,
+  getSignupAlertEmails, getSignupAlertEmailsRaw, setSignupAlertEmails,
   sendMail, verifySmtp,
 };

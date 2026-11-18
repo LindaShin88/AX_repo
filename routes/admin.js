@@ -855,6 +855,7 @@ router.get('/settings/smtp', requireSuperAdmin, (req, res) => {
     cfg,
     configured: mailer.isSmtpConfigured(),
     publicBaseUrl: mailer.getPublicBaseUrl(),
+    signupAlertEmails: mailer.getSignupAlertEmailsRaw(),
     currentHost: `${req.protocol}://${req.get('host')}`,
     flash: req.session.smtpFlash || null,
   });
@@ -874,6 +875,14 @@ router.post('/settings/smtp/save', requireSuperAdmin, (req, res) => {
     mailer.setPublicBaseUrl(req.body.public_base_url);
   }
   req.session.smtpFlash = { kind: 'ok', message: 'SMTP 설정 저장됨' };
+  res.redirect('/admin/settings/smtp');
+});
+
+// 새 가입 신청 알림을 받을 이메일 저장(쉼표로 여러 명 가능). 비우면 관리자 계정 이메일로 감.
+router.post('/settings/signup-alert/save', requireSuperAdmin, (req, res) => {
+  mailer.setSignupAlertEmails(req.body.signup_alert_emails || '');
+  const saved = mailer.getSignupAlertEmailsRaw();
+  req.session.smtpFlash = { kind: 'ok', message: saved ? `가입 알림 수신 이메일 저장됨 → ${saved}` : '가입 알림 수신 이메일 비움(관리자 계정 이메일로 발송)' };
   res.redirect('/admin/settings/smtp');
 });
 

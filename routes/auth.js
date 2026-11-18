@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const db = require('../database');
 const notify = require('../services/notify');
+const mailer = require('../services/mailer');
 const { PRIVACY_POLICY_VERSION } = require('../middleware/auth');
 
 const router = express.Router();
@@ -102,9 +103,14 @@ router.post('/register', async (req, res) => {
   // 새 가입 신청 시 관리자(super_admin)에게 "로그인 없이" 받는 알림 메일을 보낸다.
   // 메일 실패가 가입 자체를 막지 않도록 try/catch + fire-and-forget 처리.
   try {
-    const admins = db.prepare(
-      "SELECT name, email FROM operators WHERE role = 'super_admin' AND email IS NOT NULL AND TRIM(email) != ''"
-    ).all();
+    // 받는 사람: 설정화면에서 지정한 '가입 알림 이메일'이 있으면 그 주소로,
+    // 없으면 관리자(super_admin) 계정 이메일로 폴백.
+    const configured = mailer.getSignupAlertEmails();
+    const admins = configured.length
+      ? configured.map(e => ({ name: '관리자', email: e }))
+      : db.prepare(
+          "SELECT name, email FROM operators WHERE role = 'super_admin' AND email IS NOT NULL AND TRIM(email) != ''"
+        ).all();
     if (admins.length) {
       const when = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
       const subject = `[위원회 자동화] 새 가입 신청: ${name}님`;

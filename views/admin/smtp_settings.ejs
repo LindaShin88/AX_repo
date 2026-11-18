@@ -69,6 +69,19 @@
     <button class="mt-3 bg-slate-700 hover:bg-slate-800 text-white py-2 px-4 rounded-lg text-sm font-semibold">💾 공개 URL 저장</button>
   </form>
 
+  <form method="POST" action="/admin/settings/signup-alert/save" class="mt-4 bg-white border rounded-xl p-5">
+    <div class="text-sm font-semibold mb-1">🔔 새 가입 신청 알림 받을 이메일</div>
+    <p class="text-xs text-slate-500 mb-3">
+      누군가 아이디(운영자)를 신청하면, 이 주소로 <strong>로그인 없이</strong> 알림 메일이 와요.<br>
+      여러 명이면 쉼표(,)로 구분. 비워두면 관리자 계정에 등록된 이메일로 발송됩니다.
+    </p>
+    <input name="signup_alert_emails" value="<%= signupAlertEmails || '' %>" placeholder="예: soyungshin@hansung.kr" class="border rounded-lg px-3 py-2 text-sm w-full">
+    <div class="text-xs text-slate-400 mt-1">
+      현재 설정: <strong><%= signupAlertEmails || '(미설정 → 관리자 계정 이메일로 발송)' %></strong>
+    </div>
+    <button class="mt-3 bg-slate-700 hover:bg-slate-800 text-white py-2 px-4 rounded-lg text-sm font-semibold">💾 알림 이메일 저장</button>
+  </form>
+
   <form method="POST" action="/admin/settings/smtp/test" class="mt-4 bg-white border rounded-xl p-5">
     <div class="text-sm font-semibold mb-2">🧪 연결 / 발송 테스트</div>
     <div class="flex gap-2">
