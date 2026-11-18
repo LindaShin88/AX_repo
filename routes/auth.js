@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const db = require('../database');
+const notify = require('../services/notify');
 const { PRIVACY_POLICY_VERSION } = require('../middleware/auth');
 
 const router = express.Router();
@@ -97,6 +98,29 @@ router.post('/register', async (req, res) => {
     INSERT INTO operators (username, password_hash, name, department, email, role, status, privacy_consent_at, privacy_consent_version)
     VALUES (?, ?, ?, ?, ?, 'operator', 'pending', CURRENT_TIMESTAMP, ?)
   `).run(username, hash, name, department || null, email, PRIVACY_POLICY_VERSION);
+
+  // 새 가입 신청 시 관리자(super_admin)에게 "로그인 없이" 받는 알림 메일을 보낸다.
+  // 메일 실패가 가입 자체를 막지 않도록 try/catch + fire-and-forget 처리.
+  try {
+    const admins = db.prepare(
+      "SELECT name, email FROM operators WHERE role = 'super_admin' AND email IS NOT NULL AND TRIM(email) != ''"
+    ).all();
+    if (admins.length) {
+      const when = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      const subject = `[위원회 자동화] 새 가입 신청: ${name}님`;
+      const content =
+        `새로운 운영자 아이디 신청이 접수되었습니다. 승인/거절이 필요합니다.\n\n` +
+        `• 이름: ${name}\n` +
+        `• 아이디: ${username}\n` +
+        `• 이메일: ${email}\n` +
+        `• 소속: ${department || '-'}\n` +
+        `• 신청 시각: ${when}\n\n` +
+        `관리자 페이지에 로그인하여 '사용자 관리'에서 승인 또는 거절해 주세요.`;
+      for (const a of admins) {
+        notify.deliverEmail({ email: a.email, name: a.name }, subject, content).catch(() => {});
+      }
+    }
+  } catch (e) { /* 알림 실패는 가입을 막지 않는다 */ }
 
   res.redirect('/admin/login?info=registered');
 });

@@ -402,4 +402,5 @@ module.exports = {
   formatKoreanDateTime,
   buildConfirmedAnnouncement,
   sendCustomEmail,
+  deliverEmail,
 };
