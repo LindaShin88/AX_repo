@@ -52,7 +52,8 @@ function cacheFacultyCrawl(key, data) {
 // DB에 이미 캐시된 시간표(timetable_cache)만 사용하므로 크롤링 없이 즉시 계산된다.
 const MATRIX_DAYS = [1, 2, 3, 4, 5];                              // 월~금
 const MATRIX_DAY_LABELS = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금' };
-const MATRIX_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17];        // 각 1시간 칸 (09:00~18:00)
+// 각 1시간 칸. 주간(09:00~18:00)에 더해 야간(18:00~23:00)까지 포함해, 야간 수업도 매트릭스에 표시한다.
+const MATRIX_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
 
 function buildTimetableMatrix(members) {
   const parsed = members.map(m => {
