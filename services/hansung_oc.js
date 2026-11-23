@@ -3,7 +3,35 @@ const https = require('https');
 const iconv = require('iconv-lite');
 const cheerio = require('cheerio');
 
-const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 4 });
+// Render 등에서 IPv6 라우팅이 막혀 info.hansung.ac.kr 연결이 ECONNRESET/ENETUNREACH로
+// 끊기는 것을 막기 위해 IPv4 우선 조회를 강제한다(메일 SMTP 하드닝과 동일).
+try { require('dns').setDefaultResultOrder('ipv4first'); } catch (e) {}
+
+// keepAlive 재사용 소켓을 학교 서버가 유휴로 끊으면 다음 요청에서 ECONNRESET이 난다.
+// family:4로 IPv4를 강제하고, 실제 끊김은 아래 withRetry로 새 연결 재시도해 흡수한다.
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 4, family: 4 });
+
+// 일시적 네트워크 오류(연결 끊김/리셋/타임아웃)는 "잠깐"인 경우가 많아, 새 연결로 재시도한다.
+function isTransientNetError(err) {
+  const code = String(err && err.code || '').toUpperCase();
+  const msg = String(err && err.message || '').toLowerCase();
+  return /ECONNRESET|ECONNABORTED|ETIMEDOUT|ECONNREFUSED|EPIPE|ENETUNREACH|EAI_AGAIN|ESOCKETTIMEDOUT/.test(code)
+    || /socket hang up|timeout|reset|network/.test(msg);
+}
+
+async function withRetry(fn, tries = 3) {
+  let lastErr;
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt >= tries - 1 || !isTransientNetError(err)) break;
+      await new Promise(r => setTimeout(r, 600 * (attempt + 1)));  // 0.6s, 1.2s 백오프
+    }
+  }
+  throw lastErr;
+}
 
 const BASE = 'https://info.hansung.ac.kr/jsp_21/student/kyomu/';
 const PAGE_URL = BASE + 'siganpyo_aui.jsp?viewMode=oc';
@@ -17,12 +45,13 @@ const DEFAULT_HEADERS_BASE = {
 const DAY_MAP = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
 
 async function getSessionCookie() {
-  const r = await axios.get(PAGE_URL, {
+  const r = await withRetry(() => axios.get(PAGE_URL, {
     responseType: 'arraybuffer',
     headers: DEFAULT_HEADERS_BASE,
     timeout: 15000,
     validateStatus: () => true,
-  });
+    httpsAgent,
+  }));
   const setCookie = r.headers['set-cookie'] || [];
   return setCookie.map(s => s.split(';')[0]).join('; ');
 }
@@ -46,7 +75,7 @@ async function postXml(cookie, gubun, params = {}) {
   const url = gubun && (gubun === 'yearhakgilist' || gubun === 'jungonglist')
     ? `${DATA_URL}?gubun=${encodeURIComponent(gubun)}`
     : DATA_URL;
-  const r = await axios.post(url, sp, {
+  const r = await withRetry(() => axios.post(url, sp, {
     responseType: 'arraybuffer',
     headers: buildHeaders(cookie),
     timeout: 20000,
@@ -54,7 +83,7 @@ async function postXml(cookie, gubun, params = {}) {
     httpsAgent,
     maxRedirects: 0,
     decompress: true,
-  });
+  }));
   const buf = Buffer.from(new Uint8Array(r.data));
   const text = iconv.decode(buf, 'euc-kr');
   r.data = null;
