@@ -52,8 +52,11 @@ function cacheFacultyCrawl(key, data) {
 // DB에 이미 캐시된 시간표(timetable_cache)만 사용하므로 크롤링 없이 즉시 계산된다.
 const MATRIX_DAYS = [1, 2, 3, 4, 5];                              // 월~금
 const MATRIX_DAY_LABELS = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금' };
-// 각 1시간 칸. 주간(09:00~18:00)에 더해 야간(18:00~23:00)까지 포함해, 야간 수업도 매트릭스에 표시한다.
-const MATRIX_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+// 매트릭스 시간대: 기본은 주간(09:00~18:00, 칸 09~17시). 야간 수업이 있는 위원이 있을 때만
+// 그 수업이 끝나는 시각까지(최대 22:00~23:00 칸) 자동으로 늘려서 야간까지 표시한다.
+const MATRIX_HOUR_START = 9;
+const MATRIX_DAY_END_HOUR = 17;    // 야간이 없으면 여기까지(마지막 칸 17:00~18:00)
+const MATRIX_NIGHT_MAX_HOUR = 22;  // 야간이 있으면 최대 여기까지(22:00~23:00)
 
 function buildTimetableMatrix(members) {
   const parsed = members.map(m => {
@@ -65,6 +68,21 @@ function buildTimetableMatrix(members) {
   });
   const withData = parsed.filter(p => p.tt.length > 0);
   const noData = parsed.filter(p => p.tt.length === 0);
+
+  // 야간 수업(18:00 이후 종료)이 하나라도 있으면 그 끝 시각까지 칸을 늘린다. 없으면 주간까지만.
+  let maxEndMin = 0;
+  for (const p of withData) {
+    for (const cls of p.tt) {
+      const [eh, em] = String(cls.end).split(':').map(Number);
+      if (!isNaN(eh)) maxEndMin = Math.max(maxEndMin, eh * 60 + (em || 0));
+    }
+  }
+  let lastHour = MATRIX_DAY_END_HOUR;
+  if (maxEndMin > 18 * 60) {
+    lastHour = Math.min(MATRIX_NIGHT_MAX_HOUR, Math.floor((maxEndMin - 1) / 60));
+  }
+  const MATRIX_HOURS = [];
+  for (let h = MATRIX_HOUR_START; h <= lastHour; h++) MATRIX_HOURS.push(h);
 
   const cells = {};
   for (const day of MATRIX_DAYS) {
