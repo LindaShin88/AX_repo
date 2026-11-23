@@ -246,7 +246,74 @@ async function pMapLimit(items, limit, fn) {
   return results;
 }
 
+// ── 학기 시간표 "스냅샷" (미리 긁어둔 전체 데이터) 우선 사용 ──────────────────
+// Render 등에서 라이브 크롤이 ECONNRESET으로 실패하는 문제를, 정규학기는 data/에
+// 커밋해둔 스냅샷으로 네트워크 없이 연결하기 위함. 파일 없으면 라이브로 폴백.
+const _snapshotCache = new Map(); // yearhakgi -> snapshot | null(없음)
+function loadSnapshot(yearhakgi) {
+  if (_snapshotCache.has(yearhakgi)) return _snapshotCache.get(yearhakgi);
+  let snap = null;
+  try {
+    const p = require('path').join(__dirname, '..', 'data', `timetable-snapshot-${yearhakgi}.json`);
+    const fs = require('fs');
+    if (fs.existsSync(p)) snap = JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (e) { snap = null; }
+  _snapshotCache.set(yearhakgi, snap);
+  return snap;
+}
+
+// 스냅샷에서 교수 시간표를 뽑아 findProfessorClasses와 동일한 형태로 만든다.
+function buildResultFromSnapshot(snap, yearhakgi, profName) {
+  const profs = snap.professors || {};
+  // 라이브 매칭(prof 필드 includes 검색어)과 맞추기 위해, 이름에 검색어가 포함된 키를 모두 수집.
+  const keys = Object.keys(profs).filter(k => k.includes(profName));
+  const merged = [];
+  const seen = new Set();
+  for (const k of keys) {
+    for (const e of profs[k]) {
+      const sig = `${e.day}-${e.start}-${e.end}-${e.title}-${e.bunban || ''}`;
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+      merged.push(e);
+    }
+  }
+  merged.sort((a, b) => a.day - b.day || String(a.start).localeCompare(String(b.start)));
+
+  const byMajor = new Map();
+  const classKeys = new Set();
+  for (const e of merged) {
+    classKeys.add(`${e.majorCode || ''}|${e.title}|${e.bunban || ''}`);
+    if (e.major || e.majorCode) {
+      const mk = e.majorCode || e.major;
+      if (!byMajor.has(mk)) byMajor.set(mk, { code: e.majorCode || null, name: e.major || null, set: new Set() });
+      byMajor.get(mk).set.add(`${e.title}|${e.bunban || ''}`);
+    }
+  }
+  const matchedMajors = [...byMajor.values()].map(v => ({ code: v.code, name: v.name, classCount: v.set.size }));
+  const timetable = merged.map(e => ({
+    day: e.day, start: e.start, end: e.end, title: e.title,
+    location: e.location || null, bunban: e.bunban || null,
+    juya: e.juya || null, major: e.major || null, majorCode: e.majorCode || null,
+  }));
+  return {
+    yearhakgi,
+    profName,
+    totalMajorsScanned: snap.professorCount || 0,
+    matchedMajors,
+    classes: [...classKeys].map(k => ({ key: k })), // 길이=고유 강의수(메타 표시용)
+    timetable,
+    source: 'snapshot',
+  };
+}
+
 async function findProfessorClasses(yearhakgi, profName, { concurrency = 8, onProgress = null } = {}) {
+  // 정규학기 스냅샷이 있으면 네트워크 없이 그걸로 응답(ECONNRESET 회피 + 속도).
+  const snap = loadSnapshot(yearhakgi);
+  if (snap && snap.professors) {
+    if (onProgress) onProgress({ scanned: 1, total: 1, source: 'snapshot' });
+    return buildResultFromSnapshot(snap, yearhakgi, profName);
+  }
+
   const cookie = await getSessionCookie();
   const { items: majors } = await getJungongList(cookie, yearhakgi);
   const seenPlans = new Set();
