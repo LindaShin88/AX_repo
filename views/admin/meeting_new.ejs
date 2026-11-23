@@ -423,6 +423,42 @@ form.addEventListener('input', saveDraft);
 form.addEventListener('change', saveDraft);
 form.addEventListener('submit', () => { try { localStorage.removeItem(DRAFT_KEY); } catch(e) {} });
 
+// ── 직접 입력 모드: 제출 전 교원 시간표 충돌 확인 → 충돌 시 팝업(OK하면 그대로 생성) ──
+let _conflictChecked = false;
+form.addEventListener('submit', async (e) => {
+  const mode = (document.getElementById('schedule_mode') || {}).value || 'range';
+  if (mode !== 'direct' || _conflictChecked) return;  // 범위모드이거나 이미 확인함 → 통과
+  e.preventDefault();
+  let data = null;
+  try {
+    const resp = await fetch('/admin/committees/<%= committee.id %>/check-direct-conflicts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(new FormData(form)),
+    });
+    data = await resp.json();
+  } catch (err) { data = null; }
+
+  if (data && data.ok && Array.isArray(data.conflicts) && data.conflicts.length) {
+    const DOW = ['일','월','화','수','목','금','토'];
+    const fmt = (s) => {
+      const d = new Date(String(s).replace(' ', 'T'));
+      const hh = String(d.getHours()).padStart(2,'0'), mi = String(d.getMinutes()).padStart(2,'0');
+      return `${d.getMonth()+1}/${d.getDate()}(${DOW[d.getDay()]}) ${hh}:${mi}`;
+    };
+    const lines = data.conflicts.map(c => {
+      const who = c.hits.map(h => `${h.name}(${h.title} ${h.start}~${h.end})`).join(', ');
+      return `• ${fmt(c.start)} — ${who}`;
+    }).join('\n');
+    const msg = `⚠️ 직접 입력한 날짜 중 일부가 교원 수업과 겹쳐요:\n\n${lines}\n\n그래도 이 날짜들로 후보 일정을 만들까요?\n(겹치는 교원은 자동으로 '불가'로 표시됩니다)`;
+    if (!confirm(msg)) return;  // 취소 → 제출 중단(입력값 유지)
+  }
+  // OK(또는 충돌 없음/확인 실패) → 제출 진행
+  _conflictChecked = true;
+  try { localStorage.removeItem(DRAFT_KEY); } catch(e) {}
+  form.submit();
+});
+
 restoreDraft();
 
 // ── 발송 메시지 미리보기 ───────────────────────────────────────────

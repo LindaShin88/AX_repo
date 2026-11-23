@@ -951,6 +951,49 @@ router.get('/committees/:id/meetings/new', async (req, res) => {
   res.render('admin/meeting_new', { committee, members, defaults: defaultConstraints(), previewBaseUrl, mailFooterPreview });
 });
 
+// 직접 입력(날짜 직접 지정) 모드에서 "제출 전" 교원 시간표 충돌을 미리 확인한다.
+// 충돌이 있으면 프런트가 팝업으로 알리고, OK하면 그대로 제출(슬롯 생성)한다.
+router.post('/committees/:id/check-direct-conflicts', async (req, res) => {
+  const committee = db.prepare('SELECT * FROM committees WHERE id = ? AND operator_id = ?')
+    .get(req.params.id, req.session.operatorId);
+  if (!committee) return res.status(404).json({ ok: false, error: 'not-found' });
+  try {
+    const duration = parseInt(req.body.duration_minutes) || 60;
+    const morningHours = [].concat(req.body.morning_hours || []).map(parseTimeToken).filter(Boolean);
+    const afternoonHours = [].concat(req.body.afternoon_hours || []).map(parseTimeToken).filter(Boolean);
+    const anyHourSelected = morningHours.length > 0 || afternoonHours.length > 0;
+    const finalMorningHours = anyHourSelected ? morningHours : [{ h: 10, m: 0 }];
+    const finalAfternoonHours = anyHourSelected ? afternoonHours : [{ h: 14, m: 0 }, { h: 15, m: 0 }];
+    const constraints = {
+      mode: 'direct',
+      dateOverrides: parseDateOverrides(req.body.date_overrides, finalMorningHours, finalAfternoonHours),
+      excludedDates: (req.body.excluded_dates || '').split(/[\s,]+/).map(normalizeDate).filter(Boolean),
+      morningHours: finalMorningHours,
+      afternoonHours: finalAfternoonHours,
+      window: {},
+    };
+    const { generateCandidatesFromConstraints, getMemberTimetable } = require('../services/scheduler');
+    const { busyAt } = require('../services/timetable');
+    const candidates = generateCandidatesFromConstraints(constraints, duration);
+    const faculty = db.prepare("SELECT * FROM members WHERE committee_id = ? AND type = 'faculty'").all(committee.id);
+    const tts = [];
+    for (const m of faculty) tts.push({ name: m.name, tt: await getMemberTimetable(m, { referenceDate: new Date() }) });
+    const conflicts = [];
+    for (const c of candidates) {
+      const hits = [];
+      for (const { name, tt } of tts) {
+        if (!tt || tt.length === 0) continue;
+        const conf = busyAt(tt, c.start, c.end);
+        if (conf) hits.push({ name, title: conf.title, start: conf.start, end: conf.end });
+      }
+      if (hits.length) conflicts.push({ start: c.start, end: c.end, hits });
+    }
+    res.json({ ok: true, totalCandidates: candidates.length, conflicts });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 router.post('/committees/:id/meetings', async (req, res) => {
   const { title, description, location, duration_minutes } = req.body;
   const committeeId = req.params.id;
