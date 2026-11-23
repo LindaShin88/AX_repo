@@ -1006,7 +1006,7 @@ router.post('/committees/:id/meetings', async (req, res) => {
     slotIds.push(r.lastInsertRowid);
   }
 
-  if (suggestedResult.debug && suggestedResult.debug.fallback) {
+  if (suggestedResult.debug && (suggestedResult.debug.markConflicts || suggestedResult.debug.fallback)) {
     const { getMemberTimetable } = require('../services/scheduler');
     const { busyAt } = require('../services/timetable');
     for (const m of members) {

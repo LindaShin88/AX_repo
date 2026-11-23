@@ -181,9 +181,14 @@ async function suggestTopSlots(members, opts = {}) {
     return true;
   });
 
+  // 직접입력(direct) 모드: 사용자가 콕 집은 날짜는 수업이 겹쳐도 "모두" 후보로 남기고,
+  // 겹침은 아래에서 '불가(불참)'로 표시만 한다(슬롯을 지우지 않는다).
+  const isDirect = !!(opts.constraints && opts.constraints.mode === 'direct');
   let workingSet = conflictFree;
   let fallback = false;
-  if (workingSet.length === 0) {
+  if (isDirect) {
+    workingSet = candidates;
+  } else if (workingSet.length === 0) {
     workingSet = candidates;
     fallback = true;
   }
@@ -224,7 +229,7 @@ async function suggestTopSlots(members, opts = {}) {
   picked.sort((a, b) => a.start.localeCompare(b.start));
   return {
     slots: picked.slice(0, topN),
-    debug: { totalCandidates: candidates.length, conflictFree: conflictFree.length, facultyFiltered: candidates.length - conflictFree.length, fallback },
+    debug: { totalCandidates: candidates.length, conflictFree: conflictFree.length, facultyFiltered: candidates.length - conflictFree.length, fallback, direct: isDirect, markConflicts: isDirect || fallback },
   };
 }
 
