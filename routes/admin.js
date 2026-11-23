@@ -396,18 +396,33 @@ function looseDept(s) {
 // 업로드한 교직원 주소록(directory)에서 이름으로 사람을 찾는다.
 //  - 0명: null (자동채움 없음)
 //  - 1명: 그 사람
-//  - 2명+(동명이인): 교원이면 선택된 학과명과 소속(dept)이 비슷한 사람을 고르고,
-//                    확신이 안 서면 null(잘못된 이메일 자동입력 방지 → 수동 입력)
-function pickDirectoryRow(name, keptMajorNames) {
+//  - 2명+(동명이인): ① 위원 구분(교원/직원)으로 먼저 거른다 → 그 구분에 1명이면 확정
+//                    ② 그래도 여럿이면 선택한 학과/소속과 비슷한 사람을 고르고,
+//                    ③ 확신이 안 서면 null(잘못된 이메일 자동입력 방지 → 수동 입력)
+//  예) "김은주"가 교원·직원 각 1명 → 교원 위원이면 교원 김은주(기획조정처)로 자동 확정.
+function pickDirectoryRow(name, keptMajorNames, memberType) {
   const rows = db.prepare(`
     SELECT name, email, gubun, jikgup, org, dept, tel
     FROM directory WHERE name_norm = ? OR name = ?
   `).all(directoryImport.normName(name), name);
   if (rows.length === 0) return null;
   if (rows.length === 1) return rows[0];
+
+  // ① 구분으로 좁히기: faculty→'교원', staff→'직원'. (student/external은 주소록 대상이 아니라 생략)
+  const wantGubun = memberType === 'faculty' ? '교원'
+                  : memberType === 'staff' ? '직원' : null;
+  let pool = rows;
+  if (wantGubun) {
+    const byGubun = rows.filter(r => String(r.gubun || '').trim() === wantGubun);
+    if (byGubun.length === 1) return byGubun[0];   // 그 구분에 딱 1명 → 바로 확정
+    if (byGubun.length > 1) pool = byGubun;         // 같은 구분이 여럿이면 그 안에서 학과로 가린다
+    // byGubun.length === 0 → 구분이 비었거나 다름 → 전체에서 학과 매칭을 시도
+  }
+
+  // ② 선택한 학과/소속과 비슷한 사람 고르기(교원 동명이인 등)
   if (keptMajorNames && keptMajorNames.length) {
     const keep = keptMajorNames.map(looseDept).filter(Boolean);
-    const hit = rows.find(r => {
+    const hit = pool.find(r => {
       const d = looseDept(r.dept);
       return d && keep.some(k => k.includes(d) || d.includes(k));
     });
@@ -418,9 +433,9 @@ function pickDirectoryRow(name, keptMajorNames) {
 
 // 주소록 정보로 멤버의 빈 칸(이메일/직위·직책/소속/전화)만 채운다.
 // 규칙: 이메일=기본이메일(C), 직위·직책=직급(F), 소속=조직 마지막칸(G), 전화=사내 전화번호.
-function autofillMemberFromDirectory(memberId, name, current, keptMajorNames) {
+function autofillMemberFromDirectory(memberId, name, current, keptMajorNames, memberType) {
   try {
-    const row = pickDirectoryRow(name, keptMajorNames);
+    const row = pickDirectoryRow(name, keptMajorNames, memberType);
     if (!row) return null;
     const sets = [], vals = [];
     if (!current.email && row.email) { sets.push('email = ?'); vals.push(row.email); }
@@ -537,7 +552,7 @@ router.post('/committees/:id/members', async (req, res) => {
 
   // 교직원 주소록에서 이메일·직급·소속·전화 자동 채움(비어있는 칸만).
   // 교원은 위에서 고른 학과명으로 동명이인을 가려 매칭한다.
-  const autofillRow = autofillMemberFromDirectory(memberId, name, { email, role, affiliation, phone }, facultyKeptMajorNames);
+  const autofillRow = autofillMemberFromDirectory(memberId, name, { email, role, affiliation, phone }, facultyKeptMajorNames, type);
   if (autofillRow) {
     const filled = [];
     if (!email && autofillRow.email) filled.push('이메일');
