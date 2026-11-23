@@ -307,9 +307,12 @@ function dateToYearHakgi(date) {
   if (isNaN(d.getTime())) return null;
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
-  if (month >= 3 && month <= 8) return `${year}1`;
-  if (month >= 9 && month <= 12) return `${year}2`;
-  return `${year - 1}2`;
+  // 월 기준 고정 규칙(한성대 홈페이지 기본값이 미리 다음 학기로 바뀌어 있어도 무시):
+  //  3~6월 = 1학기(1), 7~8월 = 여름학기(3), 9~12월 = 2학기(2), 1~2월 = 전년도 겨울학기(4)
+  if (month >= 3 && month <= 6) return `${year}1`;   // 1학기
+  if (month >= 7 && month <= 8) return `${year}3`;   // 여름학기
+  if (month >= 9 && month <= 12) return `${year}2`;  // 2학기
+  return `${year - 1}4`;                              // 1~2월: 전년도 겨울학기
 }
 
 function describeYearHakgi(code) {
