@@ -104,23 +104,40 @@ async function getMemberTimetable(member, opts = {}) {
   if (member.type === 'faculty') {
     const meta = readCachedMeta(member);
     const cachedArr = readCachedTimetableArray(member);
-    if (meta && meta.yearhakgi === targetYearHakgi && cachedArr !== null) {
+    const snapAt = hansungOc.snapshotGeneratedAt(targetYearHakgi);
+    // 캐시가 현재 학기이고, (스냅샷이 없거나) 그 캐시가 "현재 스냅샷"으로 만들어진 것이면 그대로 사용.
+    // 시간표 스냅샷을 재생성(시각 교정 등)하면 meta.snapshotAt이 달라져 아래에서 자동 재반영된다.
+    if (meta && meta.yearhakgi === targetYearHakgi && cachedArr !== null
+        && (snapAt === null || meta.snapshotAt === snapAt)) {
       return cachedArr;
     }
 
     try {
       const result = await hansungOc.findProfessorClasses(targetYearHakgi, member.name, { concurrency: 6 });
-      const cacheEntries = result.timetable.map(e => ({
+      let timetable = result.timetable;
+      let matchedMajors = result.matchedMajors;
+      // 동명이인 선택 보존: "운영자가 학과를 직접 고른 멤버(disambiguated)"만, 예전 선택 학과로 거른다.
+      // (일반 교수는 거르지 않음 → 다른 학과 수업이 통째로 사라지는 사고 방지)
+      const prevCodes = (meta && meta.disambiguated && Array.isArray(meta.matchedMajors))
+        ? meta.matchedMajors.map(m => String(m.code || m.name || '')).filter(Boolean) : [];
+      if (prevCodes.length) {
+        const prevSet = new Set(prevCodes);
+        timetable = timetable.filter(e => prevSet.has(String(e.majorCode || e.major || '')));
+        matchedMajors = matchedMajors.filter(m => prevSet.has(String(m.code || m.name || '')));
+      }
+      const cacheEntries = timetable.map(e => ({
         day: e.day, start: e.start, end: e.end, title: e.title,
         location: e.location, bunban: e.bunban, major: e.major, majorCode: e.majorCode,
       }));
       const newMeta = {
         yearhakgi: targetYearHakgi,
         crawledAt: new Date().toISOString(),
-        matchedMajors: result.matchedMajors,
-        classCount: result.classes.length,
+        matchedMajors,
+        classCount: matchedMajors.reduce((s, m) => s + (m.classCount || 0), 0) || result.classes.length,
         slotCount: cacheEntries.length,
         searchName: member.name,
+        snapshotAt: snapAt,
+        disambiguated: meta ? !!meta.disambiguated : false,
       };
       db.prepare(`
         UPDATE members SET timetable_cache = ?, timetable_source = 'hansung_oc',

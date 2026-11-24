@@ -153,26 +153,60 @@ async function getClassesForJungong(cookie, yearhakgi, jungongCode, filterFn = n
   return filterFn ? rows.filter(filterFn) : rows;
 }
 
-const PERIOD_START = {
-  0: '08:00',
-  1: '09:00', 2: '10:00', 3: '11:00', 4: '12:00', 5: '13:00',
-  6: '14:00', 7: '15:00', 8: '16:00', 9: '17:00', 10: '18:00',
-  11: '19:00', 12: '20:00', 13: '21:00', 14: '22:00',
+// ── 한성대 2026 공식 강의시간표(수강신청 안내 PDF 기준) ──────────────────────
+// 두 가지 수업 체계가 있다.
+//  (1) 50분 수업: 정시 교시. 1교시 09:00~09:50 … 10교시 18:00~18:50, 이후 야간.
+//  (2) 75분 수업: 교시번호 뒤 'M' 표기(예: "월5M~6M"). 블록제라 오후가 30분 늦게 시작.
+// OC 시간표의 "강의실 및 교시" 칸은 교시번호로만 적혀 있어(실제 시각 필드 없음) 아래 표로 변환한다.
+
+// (1) 50분 교시 번호 → [시작, 끝]
+const PERIOD_50 = {
+  1: ['09:00', '09:50'], 2: ['10:00', '10:50'], 3: ['11:00', '11:50'], 4: ['12:00', '12:50'],
+  5: ['13:00', '13:50'], 6: ['14:00', '14:50'], 7: ['15:00', '15:50'], 8: ['16:00', '16:50'],
+  9: ['17:00', '17:50'], 10: ['18:00', '18:50'], 11: ['18:55', '19:45'], 12: ['19:50', '20:40'],
+  13: ['20:45', '21:35'], 14: ['21:40', '22:30'],
 };
 
-function periodToStartMin(periodStr) {
-  const m = String(periodStr).match(/^(\d{1,2})/);
-  if (!m) return null;
-  const p = parseInt(m[1]);
-  if (!PERIOD_START[p]) return null;
-  const [h, mm] = PERIOD_START[p].split(':').map(Number);
-  return h * 60 + mm;
+// (2) 75분 수업 블록 9개(하루) → [시작, 끝]. 75분 수업 + 15분 휴식 간격.
+const BLOCK_75 = [
+  ['09:00', '10:15'], ['10:30', '11:45'], ['12:00', '13:15'], ['13:30', '14:45'],
+  ['15:00', '16:15'], ['16:30', '17:45'], ['18:00', '19:15'], ['19:25', '20:40'], ['20:45', '22:00'],
+];
+
+// 하위호환(기존 export 유지): 50분 교시 시작시각 맵
+const PERIOD_START = Object.fromEntries(Object.entries(PERIOD_50).map(([k, v]) => [k, v[0]]));
+
+function hhmmToMin(hhmm) { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; }
+function clampBlock(i) { return Math.max(1, Math.min(BLOCK_75.length, i)); }
+
+// 75분 수업: 시작 교시번호 N → 블록 index(1~9).
+//   (교시번호는 50분 교시 기준 위치. 75분 블록은 매 3교시마다 하나씩 건너뜀)
+function block75StartIdx(p) { return clampBlock(p - Math.floor((p - 1) / 3)); }
+// 75분 수업: 끝 교시번호 N → 블록 index(1~9).
+//   끝이 '시작형 교시'(1·4·7·10·13)면 그 교시에 진행 중인 블록으로 본다(끝시각 과소추정 방지).
+function block75EndIdx(p) {
+  if (p % 3 === 1) return block75StartIdx(p);
+  return clampBlock(p - Math.ceil(p / 3));
 }
 
-function periodToEndMin(periodStr) {
-  const start = periodToStartMin(periodStr);
-  if (start === null) return null;
-  return start + 50;
+// 교시 범위(시작번호, 끝번호, 75분 여부) → {sMin, eMin}
+function periodRangeToMinutes(startNum, endNum, isM) {
+  const sN = parseInt(startNum, 10);
+  const eN = parseInt(endNum != null && endNum !== '' ? endNum : startNum, 10);
+  if (!sN) return null;
+  if (isM) {
+    const sB = BLOCK_75[block75StartIdx(sN) - 1];
+    const eB = BLOCK_75[block75EndIdx(eN) - 1];
+    if (!sB || !eB) return null;
+    let sMin = hhmmToMin(sB[0]), eMin = hhmmToMin(eB[1]);
+    if (eMin < sMin) eMin = hhmmToMin(sB[1]);
+    return { sMin, eMin };
+  }
+  const s = PERIOD_50[sN], e = PERIOD_50[eN] || PERIOD_50[sN];
+  if (!s || !e) return null;
+  let sMin = hhmmToMin(s[0]), eMin = hhmmToMin(e[1]);
+  if (eMin < sMin) eMin = hhmmToMin(s[1]);
+  return { sMin, eMin };
 }
 
 function minToTime(min) {
@@ -181,7 +215,8 @@ function minToTime(min) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-const TIME_PATTERN = /([월화수목금토일])\s*(\d{1,2})\s*M?\s*(?:~\s*(\d{1,2})\s*M?)?/g;
+// 요일 + 시작교시(M?) [~ 끝교시(M?)]. M은 각 교시번호 뒤에 붙는다(예: 월5M~6M, 월4~6M, 목2M~5).
+const TIME_PATTERN = /([월화수목금토일])\s*(\d{1,2})(M?)\s*(?:~\s*(\d{1,2})(M?))?/g;
 
 function parseClassroomField(classroom) {
   if (!classroom) return [];
@@ -194,15 +229,13 @@ function parseClassroomField(classroom) {
     const location = part.replace(TIME_PATTERN, '').replace(/\s+/g, ' ').trim() || null;
     for (const m of matches) {
       const day = DAY_MAP[m[1]];
-      const startP = m[2];
-      const endP = m[3] || m[2];
-      const sMin = periodToStartMin(startP);
-      const eMin = periodToEndMin(endP);
-      if (sMin === null || eMin === null) continue;
+      const isM = !!(m[3] || m[5]);   // 시작·끝 어느 쪽이든 M이 있으면 75분 수업
+      const rng = periodRangeToMinutes(m[2], m[4] || m[2], isM);
+      if (!rng) continue;
       slots.push({
         day,
-        start: minToTime(sMin),
-        end: minToTime(eMin),
+        start: minToTime(rng.sMin),
+        end: minToTime(rng.eMin),
         location,
         raw: part,
       });
@@ -303,7 +336,14 @@ function buildResultFromSnapshot(snap, yearhakgi, profName) {
     classes: [...classKeys].map(k => ({ key: k })), // 길이=고유 강의수(메타 표시용)
     timetable,
     source: 'snapshot',
+    snapshotAt: snap.generatedAt || null,
   };
+}
+
+// 해당 학기 스냅샷의 생성시각(없으면 null). 캐시가 스냅샷 재생성 이후 갱신돼야 하는지 판단용.
+function snapshotGeneratedAt(yearhakgi) {
+  const snap = loadSnapshot(yearhakgi);
+  return snap && snap.generatedAt ? snap.generatedAt : null;
 }
 
 async function findProfessorClasses(yearhakgi, profName, { concurrency = 8, onProgress = null } = {}) {
@@ -400,5 +440,6 @@ module.exports = {
   findProfessorClasses,
   dateToYearHakgi,
   describeYearHakgi,
+  snapshotGeneratedAt,
   PERIOD_START,
 };

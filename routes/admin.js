@@ -527,6 +527,7 @@ router.post('/committees/:id/members', async (req, res) => {
         slotCount: cacheEntries.length,
         searchName: name,
         disambiguated: !!disamb,
+        snapshotAt: hansungOc.snapshotGeneratedAt(yearhakgi),
       };
       db.prepare(`
         UPDATE members
