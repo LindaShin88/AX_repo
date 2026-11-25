@@ -504,12 +504,14 @@ function _normDate(s){
   const m = s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
   return m ? (m[1] + '-' + _pad(+m[2]) + '-' + _pad(+m[3])) : null;
 }
-function _mkSlot(ds, h, m, dur){
+function _mkSlot(ds, h, m, dur, label){
   const d = new Date(ds + 'T00:00:00');
   const em = h * 60 + m + dur;
-  return { ds, dow: d.getDay(), h, m, eh: Math.floor(em / 60), em2: em % 60 };
+  return { ds, dow: d.getDay(), h, m, eh: Math.floor(em / 60), em2: em % 60, label: label || '' };
 }
-// 직접 입력 textarea → { 'YYYY-MM-DD': ['9:00', ...] } 맵으로 파싱
+// 미리보기용: 'HH:MM' 문자열 또는 { t, label } 둘 다 받아 { t, label }로 통일
+function _asEntry(e){ return (typeof e === 'string') ? { t: e, label: '' } : e; }
+// 직접 입력 textarea → { 'YYYY-MM-DD': [{ t:'9:00', label:'...' }, ...] } (서버 parseDateOverrides와 동일 규칙)
 function _parseOverrideMap(){
   const ta = document.querySelector('textarea[name="date_overrides"]');
   const map = {};
@@ -521,18 +523,39 @@ function _parseOverrideMap(){
   const norm = x => { const mm = x.match(/^(\d{1,2})(?::(\d{2}))?$/); return mm ? (parseInt(mm[1]) + ':' + (mm[2] || '00')) : null; };
   for (const line of ta.value.split(/\r?\n/)){
     const t = line.trim(); if (!t) continue;
-    const m = t.match(/^(\d{4}[-.\/]\d{1,2}[-.\/]\d{1,2}\.?)\s*[:\s]\s*(.+)$/);
-    if (!m) continue;
-    const date = _normDate(m[1].replace(/\.$/, ''));
+    const dm = t.match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})\.?/);
+    if (!dm) continue;
+    const date = _normDate(dm[1] + '-' + dm[2] + '-' + dm[3]);
     if (!date) continue;
-    const raw = m[2].trim();
-    let times;
-    if (/^(오전|am|morning)$/i.test(raw)) times = defM;
-    else if (/^(오후|pm|afternoon)$/i.test(raw)) times = defA;
-    else if (/^(종일|all|allday|all-day|전체)$/i.test(raw)) times = [...defM, ...defA];
-    else times = raw.split(/[\s,]+/).filter(Boolean);
-    const hm = times.map(norm).filter(Boolean);
-    if (hm.length) map[date] = hm;
+    let rest = t.slice(dm[0].length);
+    const memos = [];
+    rest = rest.replace(/[\(（]([^\)）]*)[\)）]/g, (whole, inner) => {
+      const s = (inner || '').trim();
+      if (s && !/^[월화수목금토일]$/.test(s)) memos.push(s);
+      return ' ';
+    });
+    rest = rest.replace(/^\s*[:：]?\s*/, '');
+    let times = [], keyword = null; const leftover = [];
+    for (const tok of rest.split(/[\s,]+/).filter(Boolean)){
+      if (/^(오전|am|morning)$/i.test(tok)) { keyword = 'm'; continue; }
+      if (/^(오후|pm|afternoon)$/i.test(tok)) { keyword = 'a'; continue; }
+      if (/^(종일|all|allday|all-day|전체)$/i.test(tok)) { keyword = 'all'; continue; }
+      const n = norm(tok);
+      if (n) { times.push(n); continue; }
+      if (/^[월화수목금토일]$/.test(tok)) continue;
+      leftover.push(tok);
+    }
+    if (keyword === 'm') times = defM.slice();
+    else if (keyword === 'a') times = defA.slice();
+    else if (keyword === 'all') times = [...defM, ...defA];
+    if (!times.length) continue;
+    const label = [...memos, ...(leftover.length ? [leftover.join(' ')] : [])].join(' ').trim();
+    if (!map[date]) map[date] = [];
+    for (const hm of times){
+      const dup = map[date].find(x => x.t === hm);
+      if (dup) { if (!dup.label && label) dup.label = label; continue; }
+      map[date].push({ t: hm, label: label });
+    }
   }
   return map;
 }
@@ -558,9 +581,10 @@ function buildVotePreview(){
       return;
     }
     for (const ds of dates){
-      for (const tt of overrideMap[ds]){
-        const [h, m] = tt.split(':').map(Number);
-        slots.push(_mkSlot(ds, h, m, dur));
+      for (const raw of overrideMap[ds]){
+        const e = _asEntry(raw);
+        const [h, m] = e.t.split(':').map(Number);
+        slots.push(_mkSlot(ds, h, m, dur, e.label));
       }
     }
   } else {
@@ -582,9 +606,10 @@ function buildVotePreview(){
       const ov = overrideMap[ds];
       const dow = d.getDay();
       if (!ov && (dow === 0 || dow === 6)) continue;
-      for (const tt of (ov || times)){
-        const [h, m] = tt.split(':').map(Number);
-        slots.push(_mkSlot(ds, h, m, dur));
+      for (const raw of (ov || times)){
+        const e = _asEntry(raw);
+        const [h, m] = e.t.split(':').map(Number);
+        slots.push(_mkSlot(ds, h, m, dur, e.label));
       }
     }
   }
@@ -599,7 +624,8 @@ function buildVotePreview(){
   slots.slice(0, MAX).forEach(sl => {
     const d = new Date(sl.ds + 'T00:00:00');
     const label = `${d.getMonth() + 1}월 ${d.getDate()}일 (${KO[sl.dow]}) ${_pad(sl.h)}:${_pad(sl.m)} ~ ${_pad(sl.eh)}:${_pad(sl.em2)}`;
-    html += `<div class="border rounded-lg p-2 mb-1.5"><div class="font-medium text-slate-800 text-xs mb-1">${label}</div><div class="grid grid-cols-2 gap-1"><div class="border rounded px-2 py-1 text-center text-[11px] text-emerald-700 bg-emerald-50">가능 ✓</div><div class="border rounded px-2 py-1 text-center text-[11px] text-rose-600 bg-rose-50">불가능 ✗</div></div></div>`;
+    const memo = sl.label ? `<div class="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5 mb-1">📝 ${sl.label.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</div>` : '';
+    html += `<div class="border rounded-lg p-2 mb-1.5"><div class="font-medium text-slate-800 text-xs mb-1">${label}</div>${memo}<div class="grid grid-cols-2 gap-1"><div class="border rounded px-2 py-1 text-center text-[11px] text-emerald-700 bg-emerald-50">가능 ✓</div><div class="border rounded px-2 py-1 text-center text-[11px] text-rose-600 bg-rose-50">불가능 ✗</div></div></div>`;
   });
   html += (slots.length > MAX)
     ? `<div class="text-[11px] text-slate-400 text-center pt-1">… 외 ${slots.length - MAX}개 (총 ${slots.length}개 일정)</div>`

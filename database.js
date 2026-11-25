@@ -231,6 +231,7 @@ ensureColumn('meetings', 'final_pdf_generated_at', 'DATETIME');
 ensureColumn('meetings', 'group_token', 'TEXT'); // 공유 투표 링크용 짧은 코드
 ensureColumn('meetings', 'signature_targets', 'TEXT'); // 공통 서명 링크에 보일 대상(선택한 member id JSON 배열)
 ensureColumn('directory', 'gubun', 'TEXT'); // 교원/직원 구분(엑셀 '구분' 열)
+ensureColumn('meeting_slots', 'label', 'TEXT'); // 직접 입력 시 날짜별 메모(예: "교원인사위 종료 이후") — 투표 화면에 표시
 
 function migrateMemberTypes() {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='members'").get();

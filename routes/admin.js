@@ -188,28 +188,56 @@ function parseTimeToken(s) {
   return { h, m: mins };
 }
 
+// 직접 입력 한 줄을 파싱한다. 날짜 뒤에 (금)·요일·괄호 메모가 붙어 있어도 날짜/시간을 인식하고,
+// 괄호(또는 괄호 없이 쓴) 메모는 label로 보존해 투표 화면에 그대로 띄운다. 기존 양식도 그대로 동작.
+// 반환: { 'YYYY-MM-DD': [{ h, m, label }], ... }  (같은 날짜 여러 줄은 덮어쓰지 않고 누적)
 function parseDateOverrides(text, morningHours = [], afternoonHours = []) {
   if (!text) return {};
   const result = {};
+  const plain = (arr) => arr.map((x) => ({ h: x.h, m: x.m }));
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
     if (!t) continue;
-    const m = t.match(/^(\d{4}[-.\/]\d{1,2}[-.\/]\d{1,2}\.?)\s*[:\s]\s*(.+)$/);
-    if (!m) continue;
-    const date = normalizeDate(m[1].replace(/\.$/, ''));
+    // 1) 맨 앞 날짜 토큰(뒤에 (금) 등이 바로 붙어 있어도 됨)
+    const dm = t.match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})\.?/);
+    if (!dm) continue;
+    const date = normalizeDate(`${dm[1]}-${dm[2]}-${dm[3]}`);
     if (!date) continue;
-    const raw = m[2].trim();
+    let rest = t.slice(dm[0].length);
+    // 2) 괄호 안 메모 추출(요일 한 글자만 든 괄호는 제외 → 시스템이 요일을 자동으로 보여줌)
+    const memos = [];
+    rest = rest.replace(/[\(（]([^\)）]*)[\)）]/g, (whole, inner) => {
+      const s = String(inner).trim();
+      if (s && !/^[월화수목금토일]$/.test(s)) memos.push(s);
+      return ' ';
+    });
+    // 3) 날짜 바로 뒤 구분자(: 등) 제거
+    rest = rest.replace(/^\s*[:：]?\s*/, '');
+    // 4) 토큰별로 시간/키워드/메모 분리
     let times = [];
-    if (/^(오전|am|morning)$/i.test(raw)) {
-      times = morningHours.length > 0 ? morningHours : [{ h: 9, m: 0 }, { h: 10, m: 0 }, { h: 11, m: 0 }];
-    } else if (/^(오후|pm|afternoon)$/i.test(raw)) {
-      times = afternoonHours.length > 0 ? afternoonHours : [{ h: 13, m: 0 }, { h: 14, m: 0 }, { h: 15, m: 0 }, { h: 16, m: 0 }];
-    } else if (/^(종일|all|allday|all-day|전체)$/i.test(raw)) {
-      times = [...morningHours, ...afternoonHours];
-    } else {
-      times = raw.split(/[\s,]+/).filter(Boolean).map(parseTimeToken).filter(Boolean);
+    let keyword = null;
+    const leftover = [];
+    for (const tok of rest.split(/[\s,]+/).filter(Boolean)) {
+      if (/^(오전|am|morning)$/i.test(tok)) { keyword = 'morning'; continue; }
+      if (/^(오후|pm|afternoon)$/i.test(tok)) { keyword = 'afternoon'; continue; }
+      if (/^(종일|all|allday|all-day|전체)$/i.test(tok)) { keyword = 'all'; continue; }
+      const tt = parseTimeToken(tok);
+      if (tt) { times.push(tt); continue; }
+      if (/^[월화수목금토일]$/.test(tok)) continue; // 괄호 없이 쓴 요일
+      leftover.push(tok); // 괄호 없이 쓴 메모 단어
     }
-    if (times.length) result[date] = times;
+    if (keyword === 'morning') times = plain(morningHours.length ? morningHours : [{ h: 9, m: 0 }, { h: 10, m: 0 }, { h: 11, m: 0 }]);
+    else if (keyword === 'afternoon') times = plain(afternoonHours.length ? afternoonHours : [{ h: 13, m: 0 }, { h: 14, m: 0 }, { h: 15, m: 0 }, { h: 16, m: 0 }]);
+    else if (keyword === 'all') times = plain([...morningHours, ...afternoonHours]);
+    if (!times.length) continue;
+    const label = [...memos, ...(leftover.length ? [leftover.join(' ')] : [])].join(' ').trim();
+    // 5) 같은 날짜 누적(덮어쓰기 금지) + 같은 시각 중복 제거(먼저 온 메모 유지, 없으면 채움)
+    if (!result[date]) result[date] = [];
+    for (const tm of times) {
+      const dup = result[date].find((x) => x.h === tm.h && x.m === tm.m);
+      if (dup) { if (!dup.label && label) dup.label = label; continue; }
+      result[date].push({ h: tm.h, m: tm.m, label: label || '' });
+    }
   }
   return result;
 }
@@ -1054,14 +1082,14 @@ router.post('/committees/:id/meetings', async (req, res) => {
     referenceDate: meetingCreatedAt,
   });
   const suggested = suggestedResult.slots || [];
-  const insertSlot = db.prepare('INSERT INTO meeting_slots (meeting_id, start_time, end_time, suggested_score) VALUES (?, ?, ?, ?)');
+  const insertSlot = db.prepare('INSERT INTO meeting_slots (meeting_id, start_time, end_time, suggested_score, label) VALUES (?, ?, ?, ?, ?)');
   const insertResp = db.prepare(`
     INSERT OR IGNORE INTO slot_responses (slot_id, member_id, response, auto_filled, note)
     VALUES (?, ?, ?, 1, ?)
   `);
   const slotIds = [];
   for (const s of suggested) {
-    const r = insertSlot.run(meetingId, s.start, s.end, s.score);
+    const r = insertSlot.run(meetingId, s.start, s.end, s.score, s.label || null);
     slotIds.push(r.lastInsertRowid);
   }
 

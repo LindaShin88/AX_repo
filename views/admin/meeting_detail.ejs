@@ -317,6 +317,7 @@
                 <span class="text-slate-400 text-xs">~ <%= fmtKor(slot.end_time).split(' ')[1] %></span>
                 <% if (isConfirmedSlot) { %><span class="badge badge-blue ml-1">✅ 확정됨</span>
                 <% } else if (meetsQuorum) { %><span class="badge badge-green ml-1">✓ 정족수 충족</span><% } %>
+                <% if (slot.label) { %><div class="text-[11px] text-indigo-700 font-normal mt-0.5">📝 <%= slot.label %></div><% } %>
               </td>
               <% cells.forEach(({ member, response }) => { %>
                 <td class="border-b border-slate-100 px-1 py-2 text-center text-xs">
@@ -358,6 +359,7 @@
             <% slotMatrix.forEach(({ slot }) => { %>
               <th class="border-b border-slate-200 px-2 py-2 text-xs text-center <%= meeting.confirmed_slot_id === slot.id ? 'bg-blue-50' : '' %>" style="min-width:90px;">
                 <%= fmtKor(slot.start_time) %>
+                <% if (slot.label) { %><div class="text-[10px] text-indigo-700 font-normal">📝 <%= slot.label %></div><% } %>
                 <% if (meeting.confirmed_slot_id === slot.id) { %><div class="text-[10px] text-blue-700 font-semibold">✅ 확정</div><% } %>
               </th>
             <% }) %>

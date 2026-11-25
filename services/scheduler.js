@@ -49,11 +49,14 @@ function generateCandidatesFromConstraints(constraintsRaw, durationMinutes) {
 
   const pushDay = (dateStr, rawHours) => {
     const [Y, M, D] = dateStr.split('-').map(Number);
-    const allowedTimes = (rawHours || []).map(normalizeTimeEntry).filter(Boolean);
-    for (const t of allowedTimes) {
+    for (const raw of (rawHours || [])) {
+      const t = normalizeTimeEntry(raw);
+      if (!t) continue;
+      // 직접 입력에서 넘어온 날짜별 메모(label)를 후보 → 슬롯까지 그대로 전달한다.
+      const label = (raw && typeof raw === 'object' && typeof raw.label === 'string') ? raw.label : '';
       const slotStart = new Date(Y, M - 1, D, t.h, t.m, 0, 0);
       const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
-      candidates.push({ start: fmtLocal(slotStart), end: fmtLocal(slotEnd) });
+      candidates.push({ start: fmtLocal(slotStart), end: fmtLocal(slotEnd), label });
     }
   };
 
